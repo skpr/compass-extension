@@ -40,12 +40,16 @@ jobs:
         run: |
           docker compose up -d --wait --build
 
+          if [ "${{ matrix.configuration }}" = "probing" ]; then
+            docker compose exec -d php-fpm bpftrace bpftrace/compass.bt
+          fi
+
       - name: 🧪 K6
         run: |
           docker run --rm \
                      --network=host \
                      -v /tmp/output:/results \
-                     -i docker.io/grafana/k6 run - --summary-export=/results/report.json --vus 2 --duration 30s < .github/workflows/benchmark/basic.js
+                     -i docker.io/grafana/k6 run - --summary-export=/results/report.json --vus 2 --duration 30s < .github/workflows/benchmark/k6.js
 
       - name: 📋 Save Logs (Debugging)
         if: always()
