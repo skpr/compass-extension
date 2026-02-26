@@ -26,4 +26,3 @@ ENV RUSTFLAGS="-C target-feature=-crt-static"
 ENV RUST_BACKTRACE=full
 
 WORKDIR /data
-

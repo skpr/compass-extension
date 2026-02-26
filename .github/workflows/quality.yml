@@ -1,0 +1,30 @@
+name: 📋 Quality
+
+on:
+  pull_request:
+    types: [ synchronize, opened, reopened, ready_for_review ]
+
+concurrency:
+  group: quality-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Git clone the repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Build devcontainer
+        run: |
+          docker build -t localhost/devcontainer .devcontainer
+
+      - name: 📋 Format
+        run: |
+          docker run --rm -v $(pwd):/app localhost/devcontainer mise lint
+
+      - name: 📋 Clippy
+        run: |
+          docker run --rm -v $(pwd):/app localhost/devcontainer mise clippy

@@ -82,17 +82,17 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
     let mut cache_tags = String::new();
     let mut cache_contexts = String::new();
 
-    if !return_value.is_null() {
-        if let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) } {
-            if let Some(zobj) = ret.as_z_obj() {
-                let max_age_zv = zobj.get_property("cacheMaxAge");
-                if let Some(v) = max_age_zv.as_long() {
-                    cache_max_age = v;
-                }
+    if !return_value.is_null()
+        && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
+    {
+        if let Some(zobj) = ret.as_z_obj() {
+            let max_age_zv = zobj.get_property("cacheMaxAge");
+            if let Some(v) = max_age_zv.as_long() {
+                cache_max_age = v;
             }
-            cache_tags = extract_string_array_property(ret, "cacheTags");
-            cache_contexts = extract_string_array_property(ret, "cacheContexts");
         }
+        cache_tags = extract_string_array_property(ret, "cacheTags");
+        cache_contexts = extract_string_array_property(ret, "cacheContexts");
     }
 
     // Convert to CStrings for probe - these must outlive the probe call
@@ -130,23 +130,23 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
         None => return,
     };
 
-    let arg_type_cstr_ptr = get_arg_type_name(&execute_data);
+    let arg_type_cstr_ptr = get_arg_type_name(execute_data);
 
     let mut cache_max_age: i64 = -1;
     let mut cache_tags = String::new();
     let mut cache_contexts = String::new();
 
-    if !return_value.is_null() {
-        if let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) } {
-            if let Some(zobj) = ret.as_z_obj() {
-                let max_age_zv = zobj.get_property("cacheMaxAge");
-                if let Some(v) = max_age_zv.as_long() {
-                    cache_max_age = v;
-                }
+    if !return_value.is_null()
+        && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
+    {
+        if let Some(zobj) = ret.as_z_obj() {
+            let max_age_zv = zobj.get_property("cacheMaxAge");
+            if let Some(v) = max_age_zv.as_long() {
+                cache_max_age = v;
             }
-            cache_tags = extract_string_array_property(ret, "cacheTags");
-            cache_contexts = extract_string_array_property(ret, "cacheContexts");
         }
+        cache_tags = extract_string_array_property(ret, "cacheTags");
+        cache_contexts = extract_string_array_property(ret, "cacheContexts");
     }
 
     // Convert to CStrings for probe - these must outlive the probe call

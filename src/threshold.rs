@@ -4,7 +4,7 @@ use phper::ini::ini_get;
 pub const INI_CONFIG: &str = "compass.function_threshold";
 
 static FUNCTION_THRESHOLD: Lazy<u64> = Lazy::new(|| {
-    return ini_get::<i64>(INI_CONFIG) as u64;
+    ini_get::<i64>(INI_CONFIG) as u64
 });
 
 #[inline]
