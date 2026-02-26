@@ -1,0 +1,26 @@
+services:
+
+  nginx:
+    image: skpr/nginx-drupal:dev-v2-latest
+    ports:
+      - "8080:8080"
+
+  php-fpm:
+    build:
+      context: .
+      dockerfile: ./docker/compose/php-fpm/Dockerfile
+    network_mode: service:nginx
+    privileged: true
+    pid: "host"
+    environment:
+      - COMPASS_ENABLED=true
+      # - RUST_BACKTRACE=full
+    volumes:
+      - ./bpftrace:/data/bpftrace
+      - ./scripts:/scripts:ro
+      - /sys/kernel/debug:/sys/kernel/debug:rw
+      - /sys/kernel/tracing:/sys/kernel/tracing:rw
+      - /lib/modules:/lib/modules:ro
+      - /usr/src:/usr/src:ro
+    ulimits:
+      memlock: -1

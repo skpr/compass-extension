@@ -1,0 +1,39 @@
+BEGIN
+{
+    printf("Tracing FPM requests... Hit Ctrl-C to end.\n");
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:canary
+{
+    printf("Canary started\n");
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:drupal_cacheablemetadata_createfromrenderarray
+{
+    printf("drupal_cacheablemetadata_createfromrenderarray | request_id = %s, caller = %s, max-age = %d, tags = %s, contexts = %s\n", str(arg0), str(arg1), arg2, str(arg3), str(arg4));
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:drupal_cacheablemetadata_createfromobject
+{
+    printf("drupal_cacheablemetadata_createfromobject | request_id = %s, caller = %s, max-age = %d, object = %s, tags = %s, contexts = %s\n", str(arg0), str(arg1), arg2, str(arg3), str(arg4), str(arg5));
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:php_function
+{
+    printf("php_function | request_id = %s, function = %s, elapsed = %d\n", str(arg0), str(arg1), arg2);
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:request_init
+{
+    printf("request_init | request_id = %s, uri = %s, method = %s\n", str(arg0), str(arg1), str(arg2));
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:request_shutdown
+{
+    printf("request_shutdown | request_id = %s\n", str(arg0));
+}
+
+END
+{
+    printf("Finished tracing FPM requests\n");
+}
