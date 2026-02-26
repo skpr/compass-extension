@@ -12,9 +12,11 @@ services:
     network_mode: service:nginx
     privileged: true
     pid: "host"
-    environment:
-      - COMPASS_ENABLED=true
-      # - RUST_BACKTRACE=full
+    env_file:
+      - path: .env.dist
+        required: true
+      - path: .env
+        required: false
     volumes:
       - ./bpftrace:/data/bpftrace
       - ./scripts:/scripts:ro
