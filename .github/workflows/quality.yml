@@ -9,8 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Performance Test
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
 
     steps:
