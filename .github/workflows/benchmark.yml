@@ -42,7 +42,7 @@ jobs:
 
           if [ "${{ matrix.configuration }}" = "probing" ]; then
             echo "Starting bpftrace for probing configuration..."
-            docker compose exec -d --user=root php-fpm sh -c "bpftrace bpftrace/compass.bt > bpftrace.log"
+            docker compose exec -d --user=root php-fpm sh -c "bpftrace bpftrace/compass.bt > bpftrace/bpftrace.log"
           fi
 
       - name: 🧪 K6
@@ -59,7 +59,7 @@ jobs:
           docker compose logs php-fpm > /tmp/output/php-fpm.log
 
           if [ "${{ matrix.configuration }}" = "probing" ]; then
-            cp bpftrace.log /tmp/output/bpftrace.log
+            cp bpftrace/bpftrace.log /tmp/output/bpftrace.log
           fi
 
       - name: 📋 Archive Output
