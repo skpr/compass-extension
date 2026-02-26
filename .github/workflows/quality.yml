@@ -21,10 +21,10 @@ jobs:
         run: |
           docker build -t localhost/devcontainer .devcontainer
 
-      - name: 📋 Format
-        run: |
-          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
-
       - name: 📋 Clippy
         run: |
           docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise clippy
+
+      - name: 📋 Format
+        run: |
+          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
