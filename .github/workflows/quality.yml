@@ -23,8 +23,8 @@ jobs:
 
       - name: 📋 Format
         run: |
-          docker run --rm -v $(pwd):/app localhost/devcontainer mise lint
+          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
 
       - name: 📋 Clippy
         run: |
-          docker run --rm -v $(pwd):/app localhost/devcontainer mise clippy
+          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise clippy
