@@ -44,15 +44,6 @@ func run() error {
 		return fmt.Errorf("control errors (%d) are over the limit (%d)", int(control.RootGroup.Checks.OK.Fails), FailLimit)
 	}
 
-	installed, err := getReport("installed/report.json")
-	if err != nil {
-		return fmt.Errorf("failed to load installed report: %w", err)
-	}
-
-	if installed.RootGroup.Checks.OK.Fails > FailLimit {
-		return fmt.Errorf("installed errors (%d) are over the limit (%d)", int(installed.RootGroup.Checks.OK.Fails), FailLimit)
-	}
-
 	enabled, err := getReport("enabled/report.json")
 	if err != nil {
 		return fmt.Errorf("failed to load enabled report: %w", err)
@@ -62,47 +53,39 @@ func run() error {
 		return fmt.Errorf("enabled errors (%d) are over the limit (%d)", int(enabled.RootGroup.Checks.OK.Fails), FailLimit)
 	}
 
-	collector, err := getReport("collector/report.json")
+	probing, err := getReport("probing/report.json")
 	if err != nil {
-		return fmt.Errorf("failed to load collector report: %w", err)
+		return fmt.Errorf("failed to load probing report: %w", err)
 	}
 
-	if collector.RootGroup.Checks.OK.Fails > FailLimit {
-		return fmt.Errorf("collector errors (%d) are over the limit (%d)", int(collector.RootGroup.Checks.OK.Fails), FailLimit)
+	if probing.RootGroup.Checks.OK.Fails > FailLimit {
+		return fmt.Errorf("probing errors (%d) are over the limit (%d)", int(probing.RootGroup.Checks.OK.Fails), FailLimit)
 	}
 
 	var errs []error
-
-	disabledDiff := installed.Metrics.HTTPReqDuration.Avg - control.Metrics.HTTPReqDuration.Avg
-	if disabledDiff > RequestLimit {
-		errs = append(errs, fmt.Errorf("extension report exceeded the request limit"))
-	}
 
 	enabledDiff := enabled.Metrics.HTTPReqDuration.Avg - control.Metrics.HTTPReqDuration.Avg
 	if enabledDiff > RequestLimit {
 		errs = append(errs, fmt.Errorf("extension report exceeded the request limit"))
 	}
 
-	collectorDiff := collector.Metrics.HTTPReqDuration.Avg - control.Metrics.HTTPReqDuration.Avg
-	if collectorDiff > RequestLimit {
-		errs = append(errs, fmt.Errorf("collector report exceeded the request limit"))
+	probingDiff := probing.Metrics.HTTPReqDuration.Avg - control.Metrics.HTTPReqDuration.Avg
+	if probingDiff > RequestLimit {
+		errs = append(errs, fmt.Errorf("probing report exceeded the request limit"))
 	}
 
 	summaryTemplate := `| Test      | Average | Diff (Compared to Control) |
 |-----------|---------|----------------------------|
 | Control   | %dms    |                            |
-| Installed | %dms    | %dms                       |
 | Enabled   | %dms    | %dms                       |
-| Collector | %dms    | %dms                       |`
+| probing | %dms    | %dms                       |`
 
 	summary := fmt.Sprintf(summaryTemplate,
 		int(control.Metrics.HTTPReqDuration.Avg),
-		int(installed.Metrics.HTTPReqDuration.Avg),
-		int(disabledDiff),
 		int(enabled.Metrics.HTTPReqDuration.Avg),
 		int(enabledDiff),
-		int(collector.Metrics.HTTPReqDuration.Avg),
-		int(collectorDiff),
+		int(probing.Metrics.HTTPReqDuration.Avg),
+		int(probingDiff),
 	)
 
 	data := []byte(summary)
