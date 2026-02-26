@@ -41,7 +41,8 @@ jobs:
           docker compose up -d --wait --build
 
           if [ "${{ matrix.configuration }}" = "probing" ]; then
-            docker compose exec -d php-fpm bpftrace bpftrace/compass.bt
+            echo "Starting bpftrace for probing configuration..."
+            docker compose exec -d --user=root php-fpm sh -c "bpftrace bpftrace/compass.bt > bpftrace.log"
           fi
 
       - name: 🧪 K6
@@ -56,6 +57,10 @@ jobs:
         run: |
           docker compose logs nginx > /tmp/output/nginx.log
           docker compose logs php-fpm > /tmp/output/php-fpm.log
+
+          if [ "${{ matrix.configuration }}" = "probing" ]; then
+            cp bpftrace.log /tmp/output/bpftrace.log
+          fi
 
       - name: 📋 Archive Output
         uses: actions/upload-artifact@v4
