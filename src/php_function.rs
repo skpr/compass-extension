@@ -4,11 +4,6 @@ use phper::{sys, values::ExecuteData};
 use probe::probe_lazy;
 use quanta::Instant;
 use std::cell::RefCell;
-use std::ffi::CStr;
-
-// Used when a function has no caller (top-level execution)
-const NO_CALLER: &CStr = c"(no caller)";
-
 thread_local! {
     static FUNCTION_TIMES: RefCell<Vec<(usize, Instant)>> = RefCell::new(Vec::with_capacity(32));
 }

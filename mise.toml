@@ -6,6 +6,10 @@ rust = "1.91.1"
 description = "Run linting on all packages and crates"
 run = "cargo fmt --all -- --check"
 
+[tasks.clippy]
+description = "Run clippy for static analysis"
+run = "cargo clippy --all-targets --all-features -- -D warnings"
+
 [tasks.build]
 description = "Build Compass binaries"
 run = "cargo build --release"
