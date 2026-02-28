@@ -24,8 +24,6 @@ RUN curl https://mise.run | sh
 # Say yes to all the prompts (e.g. trust)
 ENV MISE_YES=1
 
-ENV RUSTFLAGS="-C target-feature=-crt-static"
-
 ENV RUST_BACKTRACE=full
 
 WORKDIR /data
