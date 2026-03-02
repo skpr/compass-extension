@@ -20,7 +20,7 @@ usdt:/usr/lib/php/modules/compass.so:compass:drupal_cacheablemetadata_createfrom
 
 usdt:/usr/lib/php/modules/compass.so:compass:php_function
 {
-    printf("php_function | request_id = %s, function = %s, elapsed = %d\n", str(arg0), str(arg1), arg2);
+    printf("php_function | request_id = %s, function = %s, elapsed = %d, memory = %d\n", str(arg0), str(arg1), arg2, arg3);
 }
 
 usdt:/usr/lib/php/modules/compass.so:compass:request_init
