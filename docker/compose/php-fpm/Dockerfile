@@ -26,7 +26,7 @@ FROM ghcr.io/skpr/php-cli:8.3-v2-stable AS build
 
   RUN mise run lint
   RUN mise run build
-  # RUN mise run validate
+  RUN mise run validate
 
 FROM ghcr.io/skpr/php-fpm:8.3-v2-stable
 
