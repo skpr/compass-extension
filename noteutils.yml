@@ -17,29 +17,29 @@ probes:
     - provider: compass
       name: php_function
       arguments:
-        - -8@%r14
+        - -8@%r12
         - -8@%rax
         - -8@%r15
-        - -8@%rbx
+        - -8@%r14
 
     - provider: compass
       name: cacheablemetadata_createfromobject
       arguments:
-        - -8@%rax
-        - -8@%r15
-        - -8@%r12
-        - -8@%rbx
+        - -8@%rcx
+        - -8@%rdx
+        - -8@%rdi
+        - -8@%rsi
         - -8@%r14
-        - -8@%r13
+        - -8@%rax
 
     - provider: compass
       name: cacheablemetadata_createfromrenderarray
       arguments:
-        - -8@%rax
-        - -8@%r15
-        - -8@%r13
+        - -8@%rcx
+        - -8@%rdx
+        - -8@%rsi
         - -8@%rbx
-        - -8@%r14
+        - -8@%rax
 
   arm64:
     - provider: compass
