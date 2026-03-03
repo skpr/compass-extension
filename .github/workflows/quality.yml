@@ -21,6 +21,10 @@ jobs:
         run: |
           docker build -t localhost/devcontainer .devcontainer
 
+      - name: 📋 Validate
+        run: |
+          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise validate
+
       - name: 📋 Clippy
         run: |
           docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise clippy

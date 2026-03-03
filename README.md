@@ -14,7 +14,7 @@ These probes can be used for any PHP application.
 * **canary** - Uses to implement zero cost probing. All the probes below will only work if this probe is also being probed.
 * **request_init** - Triggered on request initialisation and records the request ID, URI and method.
 * **request_shutdown** - Triggered on request shutdown. Handy for rollup of traces.
-* **php_function** - Triggered on PHP function completion and records the request ID, function name and elapsed time.
+* **php_function** - Triggered on PHP function completion and records the request ID, function name, elapsed time and memory usage.
 
 ## Drupal
 

@@ -58,11 +58,14 @@ pub unsafe extern "C" fn observer_end(
 
     let function_name = execute_data.func().get_function_or_method_name();
 
+    let memory = unsafe { sys::zend_memory_usage(false) } as u64;
+
     probe_lazy!(
         compass,
         php_function,
         request_id.as_ptr(),
         function_name.as_c_str_ptr(),
         elapsed,
+        memory,
     );
 }
