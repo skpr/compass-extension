@@ -23,7 +23,7 @@ probes:
         - -8@%r14
 
     - provider: compass
-      name: cacheablemetadata_createfromobject
+      name: drupal_cacheablemetadata_createfromobject
       arguments:
         - -8@%rcx
         - -8@%rdx
@@ -33,7 +33,7 @@ probes:
         - -8@%rax
 
     - provider: compass
-      name: cacheablemetadata_createfromrenderarray
+      name: drupal_cacheablemetadata_createfromrenderarray
       arguments:
         - -8@%rcx
         - -8@%rdx
