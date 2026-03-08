@@ -1,6 +1,5 @@
 [tools]
 rust = "1.91.1"
-"ubi:nickschuch/noteutils" = { version = "0.0.2" }
 
 [env]
 RUSTFLAGS = "-C target-feature=-crt-static"
@@ -17,7 +16,3 @@ run = "cargo clippy --all-targets --all-features -- -D warnings"
 description = "Build Compass binaries"
 run = "cargo build --release"
 
-[tasks.validate]
-description = "Validate notes for probing"
-run = "noteutils validate --spec noteutils.yml target/release/libcompass_extension.so"
-depends = ["build"]

@@ -1,9 +1,12 @@
 mod canary;
+mod cli;
+mod cli_function;
+mod cli_request;
 mod drupal_cache;
 mod enabled;
 mod fpm;
+mod fpm_function;
 mod observer;
-mod php_function;
 mod request;
 mod threshold;
 mod util;
@@ -50,6 +53,7 @@ pub fn on_request_init() {
     }
 
     request::init();
+    cli_request::init();
 }
 
 pub fn on_request_shutdown() {
@@ -62,4 +66,5 @@ pub fn on_request_shutdown() {
     }
 
     request::shutdown();
+    cli_request::shutdown();
 }

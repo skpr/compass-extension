@@ -1,4 +1,5 @@
 use crate::canary::probe_enabled;
+use crate::cli::is_cli;
 use crate::fpm::is_fpm;
 use phper::{sys, values::ExecuteData};
 use std::ffi::CStr;
@@ -14,7 +15,19 @@ fn handlers(
 pub unsafe extern "C" fn observer_instrument(
     execute_data: *mut sys::zend_execute_data,
 ) -> sys::zend_observer_fcall_handlers {
-    if !probe_enabled() || !is_fpm() {
+    if !probe_enabled() {
+        return handlers(None, None);
+    }
+
+    if is_cli() {
+        // CLI: only generic function tracing, no Drupal-specific probes.
+        return handlers(
+            Some(crate::cli_function::observer_begin),
+            Some(crate::cli_function::observer_end),
+        );
+    }
+
+    if !is_fpm() {
         return handlers(None, None);
     }
 
@@ -48,7 +61,7 @@ pub unsafe extern "C" fn observer_instrument(
 
     // Default function instrumentation
     handlers(
-        Some(crate::php_function::observer_begin),
-        Some(crate::php_function::observer_end),
+        Some(crate::fpm_function::observer_begin),
+        Some(crate::fpm_function::observer_end),
     )
 }

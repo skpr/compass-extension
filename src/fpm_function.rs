@@ -9,7 +9,7 @@ thread_local! {
 }
 
 #[inline(always)]
-fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
+pub fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
     let key = exec_ptr as usize;
     FUNCTION_TIMES.with(|stack| stack.borrow_mut().push((key, now)));
 }
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn observer_end(
 
     probe_lazy!(
         compass,
-        php_function,
+        fpm_function,
         request_id.as_ptr(),
         function_name.as_c_str_ptr(),
         elapsed,

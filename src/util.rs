@@ -56,6 +56,28 @@ pub fn z_val_to_string(zv: &ZVal) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+pub fn get_pid() -> u64 {
+    std::process::id() as u64
+}
+
+pub fn get_cli_command(server: &ZArr) -> String {
+    server
+        .get("argv")
+        .and_then(|val| val.as_z_arr())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|(_, v)| z_val_to_string(v))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_else(|| {
+            server
+                .get("SCRIPT_NAME")
+                .and_then(z_val_to_string)
+                .unwrap_or_else(|| "UNKNOWN".to_string())
+        })
+}
+
 // https://github.com/apache/skywalking-php/blob/master/src/util.rs#L86C1-L88C2
 pub fn get_sapi_module_name() -> &'static CStr {
     unsafe { CStr::from_ptr(sys::sapi_module.name) }
