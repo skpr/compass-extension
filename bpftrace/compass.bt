@@ -1,6 +1,6 @@
 BEGIN
 {
-    printf("Tracing FPM requests... Hit Ctrl-C to end.\n");
+    printf("Tracing PHP requests... Hit Ctrl-C to end.\n");
 }
 
 usdt:/usr/lib/php/modules/compass.so:compass:canary
@@ -18,9 +18,9 @@ usdt:/usr/lib/php/modules/compass.so:compass:drupal_cacheablemetadata_createfrom
     printf("drupal_cacheablemetadata_createfromobject | request_id = %s, caller = %s, max-age = %d, object = %s, tags = %s, contexts = %s\n", str(arg0), str(arg1), arg2, str(arg3), str(arg4), str(arg5));
 }
 
-usdt:/usr/lib/php/modules/compass.so:compass:php_function
+usdt:/usr/lib/php/modules/compass.so:compass:fpm_function
 {
-    printf("php_function | request_id = %s, function = %s, elapsed = %d, memory = %d\n", str(arg0), str(arg1), arg2, arg3);
+    printf("fpm_function | request_id = %s, function = %s, elapsed = %d, memory = %d\n", str(arg0), str(arg1), arg2, arg3);
 }
 
 usdt:/usr/lib/php/modules/compass.so:compass:request_init
@@ -33,7 +33,22 @@ usdt:/usr/lib/php/modules/compass.so:compass:request_shutdown
     printf("request_shutdown | request_id = %s\n", str(arg0));
 }
 
+usdt:/usr/lib/php/modules/compass.so:compass:cli_function
+{
+    printf("cli_function | pid = %d, function = %s, elapsed = %d, memory = %d\n", arg0, str(arg1), arg2, arg3);
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:cli_init
+{
+    printf("cli_init | pid = %d, command = %s\n", arg0, str(arg1));
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:cli_shutdown
+{
+    printf("cli_shutdown | pid = %d\n", arg0);
+}
+
 END
 {
-    printf("Finished tracing FPM requests\n");
+    printf("Finished tracing PHP requests\n");
 }

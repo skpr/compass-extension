@@ -1,15 +1,15 @@
 use crate::threshold;
-use crate::util::{get_request_id, get_request_server};
+use phper::strings::ZString;
 use phper::{sys, values::ExecuteData};
-use probe::probe_lazy;
 use quanta::Instant;
 use std::cell::RefCell;
+
 thread_local! {
     static FUNCTION_TIMES: RefCell<Vec<(usize, Instant)>> = RefCell::new(Vec::with_capacity(32));
 }
 
 #[inline(always)]
-fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
+pub fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
     let key = exec_ptr as usize;
     FUNCTION_TIMES.with(|stack| stack.borrow_mut().push((key, now)));
 }
@@ -34,38 +34,27 @@ pub unsafe extern "C" fn observer_begin(execute_data: *mut sys::zend_execute_dat
     set_function_time(execute_data, Instant::now());
 }
 
-pub unsafe extern "C" fn observer_end(
+pub struct FunctionObservation {
+    pub elapsed: u64,
+    pub function_name: ZString,
+    pub memory: u64,
+}
+
+pub fn observe_function_end(
     execute_data: *mut sys::zend_execute_data,
-    _return_value: *mut sys::zval,
-) {
-    let elapsed = match take_elapsed_if_over_threshold(execute_data) {
-        Some(e) => e,
-        None => return,
-    };
-
-    let server = match get_request_server() {
-        Ok(s) => s,
-        Err(_) => return, // Avoid logging in hot path
-    };
-
-    let request_id = get_request_id(server);
+) -> Option<FunctionObservation> {
+    let elapsed = take_elapsed_if_over_threshold(execute_data)?;
 
     // Explicit unsafe block as required in Rust 2024
-    let execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
-        Some(data) => data,
-        None => return,
-    };
+    let execute_data = unsafe { ExecuteData::try_from_mut_ptr(execute_data) }?;
 
     let function_name = execute_data.func().get_function_or_method_name();
 
     let memory = unsafe { sys::zend_memory_usage(false) } as u64;
 
-    probe_lazy!(
-        compass,
-        php_function,
-        request_id.as_ptr(),
-        function_name.as_c_str_ptr(),
+    Some(FunctionObservation {
         elapsed,
+        function_name,
         memory,
-    );
+    })
 }

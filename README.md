@@ -7,65 +7,46 @@ Used by [Compass](github.com/skpr/compass).
 
 ## Probes
 
-### Core
+All probes use the USDT provider named `compass`. They are only active when an external tracer (e.g. bpftrace) is attached.
 
-These probes can be used for any PHP application.
+### System
 
-* **canary** - Uses to implement zero cost probing. All the probes below will only work if this probe is also being probed.
-* **request_init** - Triggered on request initialisation and records the request ID, URI and method.
-* **request_shutdown** - Triggered on request shutdown. Handy for rollup of traces.
-* **php_function** - Triggered on PHP function completion and records the request ID, function name, elapsed time and memory usage.
+| Probe | Arguments | Purpose |
+|-------|-----------|---------|
+| `canary` | _(none)_ | Zero-cost gatekeeper probe. All other probes only fire if this probe is being actively traced. Result is cached for 1 second. |
 
-## Drupal
+### FPM
 
-These probes are specific to Drupal applications.
+These probes are triggered when PHP is running under the FPM SAPI.
 
-* **drupal_cacheablemetadata_createfromobject** - Used to debug CacheableMetadata for a object. Records request ID, object type, caller, max age, cache tags and contexts.
-* **drupal_cacheablemetadata_createfromrenderarray** - Used to debug CacheableMetadata for an array. Records request ID, caller, max age, cache tags and contexts.
+| Probe | Arguments | Purpose |
+|-------|-----------|---------|
+| `request_init` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`uri` (string) - Request URI from `REQUEST_URI`, `PHP_SELF`, `SCRIPT_NAME`, or `"/unknown"`<br>`method` (string) - HTTP method from `REQUEST_METHOD` or `"UNKNOWN"` | Fired during request initialization. Records the identity and nature of the incoming HTTP request. |
+| `request_shutdown` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"` | Fired during request shutdown. Useful for rollup/finalization of traces for a given request. |
+| `fpm_function` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
 
-```bash
-$ readelf -n compass.so
+### CLI
 
-Displaying notes found in: .note.gnu.build-id
-  Owner                Data size        Description
-  GNU                  0x00000014       NT_GNU_BUILD_ID (unique build ID bitstring)
-    Build ID: 639122726ca0c31dff403ad24f058bf5f1df487e
+These probes are triggered when PHP is running under the CLI SAPI. They are grouped by PID.
 
-Displaying notes found in: .note.stapsdt
-  Owner                Data size        Description
-  stapsdt              0x0000007a       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: drupal_cacheablemetadata_createfromobject
-    Location: 0x00000000000114bd, Base: 0x0000000000065030, Semaphore: 0x0000000000075ad8
-    Arguments: -8@%rcx -8@%rdx -8@%rdi -8@%rsi -8@%r14 -8@%rax
-  stapsdt              0x00000077       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: drupal_cacheablemetadata_createfromrenderarray
-    Location: 0x000000000001188e, Base: 0x0000000000065030, Semaphore: 0x0000000000075ada
-    Arguments: -8@%rcx -8@%rdx -8@%rsi -8@%rbx -8@%rax
-  stapsdt              0x00000045       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: php_function
-    Location: 0x0000000000011ac0, Base: 0x0000000000065030, Semaphore: 0x0000000000075adc
-    Arguments: -8@%r14 -8@%rax -8@%r15
-  stapsdt              0x00000045       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: request_init
-    Location: 0x0000000000011f19, Base: 0x0000000000065030, Semaphore: 0x0000000000075ae0
-    Arguments: -8@%rcx -8@%r15 -8@%rax
-  stapsdt              0x00000039       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: request_shutdown
-    Location: 0x000000000001221e, Base: 0x0000000000065030, Semaphore: 0x0000000000075ae2
-    Arguments: -8@%rax
-  stapsdt              0x00000028       NT_STAPSDT (SystemTap probe descriptors)
-    Provider: compass
-    Name: canary
-    Location: 0x000000000001257b, Base: 0x0000000000065030, Semaphore: 0x0000000000075ade
-    Arguments:
-```
+| Probe | Arguments | Purpose |
+|-------|-----------|---------|
+| `cli_init` | `pid` (u64) - Process ID of the PHP CLI process<br>`command` (string) - Full CLI command from `argv` or `SCRIPT_NAME` | Fired during CLI request initialization. Records the PID and the full command being executed. |
+| `cli_shutdown` | `pid` (u64) - Process ID of the PHP CLI process | Fired during CLI request shutdown. Signals the end of a CLI process execution. |
+| `cli_function` | `pid` (u64) - Process ID of the PHP CLI process<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
+
+### Drupal
+
+These probes are specific to Drupal applications (FPM only).
+
+| Probe | Arguments | Purpose |
+|-------|-----------|---------|
+| `drupal_cacheablemetadata_createfromobject` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`caller` (string) - Fully-qualified name of the calling function<br>`cache_max_age` (i64) - `cacheMaxAge` property, defaults to `-1`<br>`arg_type` (string) - Class name or type of the first argument<br>`cache_tags` (string) - Space-delimited cache tags<br>`cache_contexts` (string) - Space-delimited cache contexts | Fires at the end of `CacheableMetadata::createFromObject`. Captures full cacheability metadata for diagnosing unexpected cache behavior. |
+| `drupal_cacheablemetadata_createfromrenderarray` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`caller` (string) - Fully-qualified name of the calling function<br>`cache_max_age` (i64) - `cacheMaxAge` property, defaults to `-1`<br>`cache_tags` (string) - Space-delimited cache tags<br>`cache_contexts` (string) - Space-delimited cache contexts | Fires at the end of `CacheableMetadata::createFromRenderArray`. Same as the object probe but without `arg_type` since the input is always an array. |
 
 ## INI Configuration
 
-* **compass.enabled** - Enables the PHP extension
-* **compass.function_threshold** - Filters function calls greater than configured value. Time is in nanoseconds.
+| Directive | Default | Description |
+|-----------|---------|-------------|
+| `compass.enabled` | `false` | Master switch to enable/disable the extension. |
+| `compass.function_threshold` | `1000000` (1ms) | Only function calls exceeding this elapsed time (in nanoseconds) trigger `fpm_function` / `cli_function` probes. |
