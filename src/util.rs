@@ -1,6 +1,7 @@
 use anyhow::Context;
 use phper::{arrays::ZArr, eg, pg, sys, values::ZVal};
 use std::ffi::CStr;
+use tracing::error;
 
 // https://github.com/apache/skywalking-php/blob/master/src/request.rs#L93
 pub fn jit_initialization() {
@@ -81,4 +82,17 @@ pub fn get_cli_command(server: &ZArr) -> String {
 // https://github.com/apache/skywalking-php/blob/master/src/util.rs#L86C1-L88C2
 pub fn get_sapi_module_name() -> &'static CStr {
     unsafe { CStr::from_ptr(sys::sapi_module.name) }
+}
+
+/// Combines JIT initialization with server retrieval and error logging.
+/// Used by both CLI and FPM request init paths.
+pub fn init_and_get_server<'a>() -> Option<&'a ZArr> {
+    jit_initialization();
+    match get_request_server() {
+        Ok(server) => Some(server),
+        Err(err) => {
+            error!("unable to get server info: {}", err);
+            None
+        }
+    }
 }

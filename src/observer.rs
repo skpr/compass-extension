@@ -22,8 +22,8 @@ pub unsafe extern "C" fn observer_instrument(
     if is_cli() {
         // CLI: only generic function tracing, no Drupal-specific probes.
         return handlers(
-            Some(crate::cli_function::observer_begin),
-            Some(crate::cli_function::observer_end),
+            Some(crate::function_observer::observer_begin),
+            Some(crate::cli::observer_end),
         );
     }
 
@@ -61,7 +61,7 @@ pub unsafe extern "C" fn observer_instrument(
 
     // Default function instrumentation
     handlers(
-        Some(crate::fpm_function::observer_begin),
-        Some(crate::fpm_function::observer_end),
+        Some(crate::function_observer::observer_begin),
+        Some(crate::fpm::observer_end),
     )
 }
