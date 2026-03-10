@@ -23,14 +23,14 @@ usdt:/usr/lib/php/modules/compass.so:compass:fpm_function
     printf("fpm_function | request_id = %s, function = %s, elapsed = %d, memory = %d\n", str(arg0), str(arg1), arg2, arg3);
 }
 
-usdt:/usr/lib/php/modules/compass.so:compass:request_init
+usdt:/usr/lib/php/modules/compass.so:compass:fpm_request_init
 {
-    printf("request_init | request_id = %s, uri = %s, method = %s\n", str(arg0), str(arg1), str(arg2));
+    printf("fpm_request_init | request_id = %s, uri = %s, method = %s\n", str(arg0), str(arg1), str(arg2));
 }
 
-usdt:/usr/lib/php/modules/compass.so:compass:request_shutdown
+usdt:/usr/lib/php/modules/compass.so:compass:fpm_request_shutdown
 {
-    printf("request_shutdown | request_id = %s\n", str(arg0));
+    printf("fpm_request_shutdown | request_id = %s\n", str(arg0));
 }
 
 usdt:/usr/lib/php/modules/compass.so:compass:cli_function
@@ -38,14 +38,14 @@ usdt:/usr/lib/php/modules/compass.so:compass:cli_function
     printf("cli_function | pid = %d, function = %s, elapsed = %d, memory = %d\n", arg0, str(arg1), arg2, arg3);
 }
 
-usdt:/usr/lib/php/modules/compass.so:compass:cli_init
+usdt:/usr/lib/php/modules/compass.so:compass:cli_request_init
 {
-    printf("cli_init | pid = %d, command = %s\n", arg0, str(arg1));
+    printf("cli_request_init | pid = %d, command = %s\n", arg0, str(arg1));
 }
 
-usdt:/usr/lib/php/modules/compass.so:compass:cli_shutdown
+usdt:/usr/lib/php/modules/compass.so:compass:cli_request_shutdown
 {
-    printf("cli_shutdown | pid = %d\n", arg0);
+    printf("cli_request_shutdown | pid = %d\n", arg0);
 }
 
 END
