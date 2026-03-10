@@ -58,7 +58,7 @@ pub fn init() {
 
     probe_lazy!(
         compass,
-        request_init,
+        fpm_request_init,
         request_id.as_ptr(),
         uri.as_ptr(),
         method.as_ptr()
@@ -82,5 +82,5 @@ pub fn shutdown() {
 
     let request_id = get_request_id(server);
 
-    probe_lazy!(compass, request_shutdown, request_id.as_ptr());
+    probe_lazy!(compass, fpm_request_shutdown, request_id.as_ptr());
 }

@@ -48,7 +48,7 @@ pub fn init() {
     let command = get_cli_command(server);
     let command_cstr = CString::new(command).unwrap_or_else(|_| CString::default());
 
-    probe_lazy!(compass, cli_init, pid, command_cstr.as_ptr());
+    probe_lazy!(compass, cli_request_init, pid, command_cstr.as_ptr());
 }
 
 pub fn shutdown() {
@@ -58,5 +58,5 @@ pub fn shutdown() {
 
     let pid = get_pid();
 
-    probe_lazy!(compass, cli_shutdown, pid);
+    probe_lazy!(compass, cli_request_shutdown, pid);
 }

@@ -21,8 +21,8 @@ These probes are triggered when PHP is running under the FPM SAPI.
 
 | Probe | Arguments | Purpose |
 |-------|-----------|---------|
-| `request_init` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`uri` (string) - Request URI from `REQUEST_URI`, `PHP_SELF`, `SCRIPT_NAME`, or `"/unknown"`<br>`method` (string) - HTTP method from `REQUEST_METHOD` or `"UNKNOWN"` | Fired during request initialization. Records the identity and nature of the incoming HTTP request. |
-| `request_shutdown` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"` | Fired during request shutdown. Useful for rollup/finalization of traces for a given request. |
+| `fpm_request_init` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`uri` (string) - Request URI from `REQUEST_URI`, `PHP_SELF`, `SCRIPT_NAME`, or `"/unknown"`<br>`method` (string) - HTTP method from `REQUEST_METHOD` or `"UNKNOWN"` | Fired during request initialization. Records the identity and nature of the incoming HTTP request. |
+| `fpm_request_shutdown` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"` | Fired during request shutdown. Useful for rollup/finalization of traces for a given request. |
 | `fpm_function` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
 
 ### CLI
@@ -32,8 +32,8 @@ These probes are triggered when PHP is running under the CLI SAPI. They are grou
 | Probe | Arguments | Purpose |
 |-------|-----------|---------|
 | `cli_init` | `pid` (u64) - Process ID of the PHP CLI process<br>`command` (string) - Full CLI command from `argv` or `SCRIPT_NAME` | Fired during CLI request initialization. Records the PID and the full command being executed. |
-| `cli_shutdown` | `pid` (u64) - Process ID of the PHP CLI process | Fired during CLI request shutdown. Signals the end of a CLI process execution. |
-| `cli_function` | `pid` (u64) - Process ID of the PHP CLI process<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
+| `cli_request_shutdown` | `pid` (u64) - Process ID of the PHP CLI process | Fired during CLI request shutdown. Signals the end of a CLI process execution. |
+| `cli_request_function` | `pid` (u64) - Process ID of the PHP CLI process<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
 
 ### Drupal
 
