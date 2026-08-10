@@ -78,9 +78,11 @@ jobs:
           # green tick on no data.
           K6_IMAGE: docker.io/grafana/k6
 
+      # Reports live under /tmp/output/<configuration>/report.json; summary.md is
+      # written to the working directory for the step below.
       - name: 📋 Review Test Results
         if: always()
-        run: go run .github/workflows/benchmark/results.go
+        run: go run .github/workflows/benchmark/results.go /tmp/output
 
       - name: 📋 Post Test Results to Summary
         if: always()

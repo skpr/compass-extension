@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -49,17 +50,25 @@ func main() {
 }
 
 func run() error {
-	control, err := getReport("control")
+	// Directory holding one subdirectory per configuration, each with a
+	// report.json. Defaults to the working directory so the tool can be run by
+	// hand from wherever the reports were collected.
+	base := "."
+	if len(os.Args) > 1 {
+		base = os.Args[1]
+	}
+
+	control, err := getReport(base, "control")
 	if err != nil {
 		return err
 	}
 
-	enabled, err := getReport("enabled")
+	enabled, err := getReport(base, "enabled")
 	if err != nil {
 		return err
 	}
 
-	probing, err := getReport("probing")
+	probing, err := getReport(base, "probing")
 	if err != nil {
 		return err
 	}
@@ -124,14 +133,17 @@ func percent(diff, baseline float64) float64 {
 	return diff / baseline * 100
 }
 
-func getReport(configuration string) (Report, error) {
+func getReport(base, configuration string) (Report, error) {
 	var report Report
 
-	path := configuration + "/report.json"
+	path := filepath.Join(base, configuration, "report.json")
 
 	file, err := os.Open(path)
 	if err != nil {
-		return report, fmt.Errorf("failed to open %s: %w", path, err)
+		return report, fmt.Errorf(
+			"failed to open %s (the %s run probably did not complete - check the k6 step): %w",
+			path, configuration, err,
+		)
 	}
 
 	defer file.Close()

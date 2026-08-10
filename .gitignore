@@ -1,3 +1,7 @@
 /target
 /.idea
 /.vscode
+
+# Local benchmark run artefacts.
+/.env
+/summary.md
