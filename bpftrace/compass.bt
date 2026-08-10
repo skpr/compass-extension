@@ -3,9 +3,13 @@ BEGIN
     printf("Tracing PHP requests... Hit Ctrl-C to end.\n");
 }
 
+// Every other probe is gated on this one, so a consumer MUST attach here or
+// nothing else fires. It is now sampled once per request rather than once per
+// second, so it is counted rather than printed - printing would flood the output
+// under load. The total is reported by the END block.
 usdt:/usr/lib/php/modules/compass.so:compass:canary
 {
-    printf("Canary started\n");
+    @canary_samples = count();
 }
 
 usdt:/usr/lib/php/modules/compass.so:compass:drupal_cacheablemetadata_createfromrenderarray
@@ -46,6 +50,23 @@ usdt:/usr/lib/php/modules/compass.so:compass:cli_request_init
 usdt:/usr/lib/php/modules/compass.so:compass:cli_request_shutdown
 {
     printf("cli_request_shutdown | pid = %d\n", arg0);
+}
+
+// SQL text for a sql_id, emitted once per distinct statement per process.
+// Join this against the sql_id on the db_query probes below.
+usdt:/usr/lib/php/modules/compass.so:compass:db_query_text
+{
+    printf("db_query_text | sql_id = %x, sql = %s\n", arg0, str(arg1));
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:fpm_db_query
+{
+    printf("fpm_db_query | request_id = %s, sql_id = %x, elapsed = %d\n", str(arg0), arg1, arg2);
+}
+
+usdt:/usr/lib/php/modules/compass.so:compass:cli_db_query
+{
+    printf("cli_db_query | pid = %d, sql_id = %x, elapsed = %d\n", arg0, arg1, arg2);
 }
 
 END

@@ -9,19 +9,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  benchmark:
     name: Performance Test
     runs-on: ubuntu-latest
 
     # This is really expensive, so we only want to run it when we need to.
     if: contains(github.event.pull_request.labels.*.name, 'benchmark-needed')
-
-    strategy:
-      matrix:
-        configuration:
-          - control # Without extension enabled.
-          - enabled # Extension enabled but no probing.
-          - probing # Extension enabled with probing from bpftrace.
 
     steps:
       - name: ⬇️ Git clone the repository
@@ -29,66 +22,73 @@ jobs:
 
       - name: 📁 Init
         run: |
-          # Create benchmark testing results directory.
           sudo mkdir -p /tmp/output
-          sudo chmod 777  /tmp/output
+          sudo chmod 777 /tmp/output
 
-          # Copy the env file for the current configuration to the root of the repository, so that it gets picked up by docker compose.
-          cp .github/workflows/benchmark/${{ matrix.configuration }}/.env .env
-
-      - name: 📦 Up
+      # All three configurations run sequentially in ONE job, on ONE runner.
+      #
+      # They used to be a matrix, which meant comparing a request time measured
+      # on machine A against one measured on machine B. Run-to-run variance on a
+      # shared burstable runner is comfortably 10-30% for a Drupal render, which
+      # is almost certainly how the old gate ended up at a meaningless 200ms
+      # absolute. Same runner, back to back, is the only way the comparison means
+      # anything.
+      - name: 🧪 Run configurations
         run: |
-          docker compose up -d --wait --build
+          set -eu
 
-          if [ "${{ matrix.configuration }}" = "probing" ]; then
-            echo "Starting bpftrace for probing configuration..."
-            docker compose exec -d --user=root php-fpm sh -c "bpftrace bpftrace/compass.bt > bpftrace/bpftrace.log"
-          fi
+          for configuration in control enabled probing; do
+            echo "::group::$configuration"
+            cp ".github/workflows/benchmark/$configuration/.env" .env
 
-      - name: 🧪 K6
-        run: |
-          docker run --rm \
-                     --network=host \
-                     -v /tmp/output:/results \
-                     -i docker.io/grafana/k6 run - --summary-export=/results/report.json --vus 2 --duration 30s < .github/workflows/benchmark/k6.js
+            docker compose up -d --wait --build
 
-      - name: 📋 Save Logs (Debugging)
+            if [ "$configuration" = "probing" ]; then
+              docker compose exec -d --user=root php-fpm \
+                sh -c "bpftrace bpftrace/compass.bt > bpftrace/bpftrace.log 2>&1"
+              # bpftrace has to compile and attach its uprobes before it counts
+              # as attached, and the canary is sampled per request.
+              sleep 15
+            fi
+
+            # Warm up and discard. The first requests populate Drupal's render
+            # and config caches and would otherwise dominate the average.
+            docker run --rm --network=host -i "$K6_IMAGE" \
+              run - --vus 2 --duration 20s < .github/workflows/benchmark/k6.js > /dev/null
+
+            mkdir -p "/tmp/output/$configuration"
+            docker run --rm --network=host -v "/tmp/output/$configuration:/results" -i "$K6_IMAGE" \
+              run - --summary-export=/results/report.json --vus 4 --duration 60s \
+              < .github/workflows/benchmark/k6.js
+
+            docker compose logs nginx   > "/tmp/output/$configuration/nginx.log"
+            docker compose logs php-fpm > "/tmp/output/$configuration/php-fpm.log"
+            if [ "$configuration" = "probing" ]; then
+              cp bpftrace/bpftrace.log "/tmp/output/$configuration/bpftrace.log" || true
+            fi
+
+            docker compose down -v --remove-orphans
+            echo "::endgroup::"
+          done
+        env:
+          # TODO: pin to a specific tag or digest. An unpinned image means a k6
+          # release can silently change the --summary-export schema underneath
+          # results.go. That used to fail open; results.go now rejects a report
+          # it cannot parse, so the worst case is a loud failure rather than a
+          # green tick on no data.
+          K6_IMAGE: docker.io/grafana/k6
+
+      - name: 📋 Review Test Results
         if: always()
-        run: |
-          docker compose logs nginx > /tmp/output/nginx.log
-          docker compose logs php-fpm > /tmp/output/php-fpm.log
+        run: go run .github/workflows/benchmark/results.go
 
-          if [ "${{ matrix.configuration }}" = "probing" ]; then
-            cp bpftrace/bpftrace.log /tmp/output/bpftrace.log
-          fi
+      - name: 📋 Post Test Results to Summary
+        if: always()
+        run: cat summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: 📋 Archive Output
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ${{ matrix.configuration }}
-          path: |
-            /tmp/output
-
-  results:
-    name: Compare Results
-    runs-on: ubuntu-latest
-    needs: test
-
-    # This is really expensive, so we only want to run it when we need to.
-    if: contains(github.event.pull_request.labels.*.name, 'benchmark-needed')
-
-    steps:
-      - name: ⬇️ Git clone the repository
-        uses: actions/checkout@v4
-
-      - name: Download all workflow run artifacts
-        uses: actions/download-artifact@v4
-
-      - name: 📋 Review Test Results
-        run: |
-          go run .github/workflows/benchmark/results.go
-
-      - name: 📋 Post Test Results to Summary
-        if: always()
-        run: cat summary.md >> $GITHUB_STEP_SUMMARY
+          name: benchmark
+          path: /tmp/output

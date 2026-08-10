@@ -3,15 +3,34 @@ name: 📋 Quality
 on:
   pull_request:
     types: [ synchronize, opened, reopened, ready_for_review ]
+  # The default branch was previously unguarded - nothing ran on merge.
+  push:
+    branches: [ main ]
 
 concurrency:
-  group: quality-${{ github.head_ref }}
+  group: quality-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   quality:
-    name: Quality
+    name: Quality (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The skpr package repository path couples the Alpine release to the PHP
+        # version, so the pair moves together. 8.3 is what
+        # docker/compose/php-fpm actually ships; 8.4 is the devcontainer default.
+        # Checking only one of them let a PR pass against 8.4 while breaking the
+        # 8.3 build that ships, because phper-sys bindgen output differs.
+        include:
+          - { php: "8.3", alpine: "3.20" }
+          - { php: "8.4", alpine: "3.21" }
+
+    env:
+      # Stop the two legs sharing a target directory.
+      CARGO_TARGET_DIR: target/php${{ matrix.php }}
 
     steps:
       - name: ⬇️ Git clone the repository
@@ -19,12 +38,25 @@ jobs:
 
       - name: 📦 Build devcontainer
         run: |
-          docker build -t localhost/devcontainer .devcontainer
-
-      - name: 📋 Clippy
-        run: |
-          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise clippy
+          docker build -t localhost/devcontainer \
+            --build-arg PHP_VERSION=${{ matrix.php }} \
+            --build-arg ALPINE_VERSION=${{ matrix.alpine }} \
+            .devcontainer
 
       - name: 📋 Format
-        run: |
-          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
+        run: docker run --rm -e CARGO_TARGET_DIR -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
+
+      - name: 📋 Clippy
+        run: docker run --rm -e CARGO_TARGET_DIR -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise clippy
+
+      # Also the only step that links the cdylib. `cargo clippy` emits metadata
+      # and never links, so without this a missing or renamed PHP symbol for a
+      # given PHP version cannot fail CI.
+      - name: 📋 Validate probe contract
+        run: docker run --rm -e CARGO_TARGET_DIR -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise validate
+
+      - name: 🧪 Behaviour
+        run: docker run --rm -e CARGO_TARGET_DIR -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise fixture
+
+      - name: 🧪 Smoke
+        run: docker run --rm -e CARGO_TARGET_DIR -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise smoke

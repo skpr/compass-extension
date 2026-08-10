@@ -4,7 +4,6 @@ use crate::util::{get_cli_command, get_pid, get_sapi_module_name, init_and_get_s
 use once_cell::sync::Lazy;
 use phper::sys;
 use probe::probe_lazy;
-use std::ffi::CString;
 
 static IS_CLI: Lazy<bool> = Lazy::new(|| get_sapi_module_name().to_bytes() == b"cli");
 
@@ -17,6 +16,11 @@ pub unsafe extern "C" fn observer_end(
     execute_data: *mut sys::zend_execute_data,
     _return_value: *mut sys::zval,
 ) {
+    // Cheapest possible exit when nobody is listening: one thread-local load.
+    if !crate::canary::is_traced() {
+        return;
+    }
+
     let obs = match observe_function_end(execute_data) {
         Some(o) => o,
         None => return,
@@ -45,10 +49,10 @@ pub fn init() {
     };
 
     let pid = get_pid();
+    // Already NUL terminated and truncated at any interior NUL by get_cli_command.
     let command = get_cli_command(server);
-    let command_cstr = CString::new(command).unwrap_or_else(|_| CString::default());
 
-    probe_lazy!(compass, cli_request_init, pid, command_cstr.as_ptr());
+    probe_lazy!(compass, cli_request_init, pid, command.as_ptr());
 }
 
 pub fn shutdown() {

@@ -1,4 +1,5 @@
-use crate::util::{get_request_id, get_request_server, z_val_to_string};
+use crate::util::{bytes_to_cstring, get_request_id, get_request_server, join_z_arr_strings};
+use phper::strings::ZString;
 use phper::values::ZVal;
 use phper::{sys, values::ExecuteData};
 use probe::probe_lazy;
@@ -9,16 +10,29 @@ use std::ptr;
 const NO_CALLER: &CStr = c"(no caller)";
 
 // Extracts the caller (class::method or function name) from the previous execute_data frame.
-// Returns a pointer to a C string representing the caller's fully-qualified name,
-// or a pointer to "(no caller)" if no previous frame exists.
+// Returns the owned name, or None if there is no previous frame.
+//
+// This returns the ZString rather than a pointer into it on purpose.
+// get_function_or_method_name() hands back an owned ZString (EBox<ZStr>, and
+// ZStr releases the underlying zend_string on drop), so a pointer taken from a
+// local here would dangle before the probe ever read it. The caller must keep
+// the returned value alive across the probe call - see caller_ptr below.
 #[inline]
-fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> *const c_char {
+fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> Option<ZString> {
+    if execute_data.is_null() {
+        return None;
+    }
     let prev_ptr = unsafe { (*execute_data).prev_execute_data };
-    match unsafe { ExecuteData::try_from_mut_ptr(prev_ptr) } {
-        Some(prev) => {
-            let name = prev.func().get_function_or_method_name();
-            unsafe { CStr::from_ptr(name.as_c_str_ptr()) }.as_ptr()
-        }
+    let prev = unsafe { ExecuteData::try_from_mut_ptr(prev_ptr) }?;
+    Some(prev.func().get_function_or_method_name())
+}
+
+// Borrows a probe-ready pointer from a caller name, falling back to NO_CALLER.
+// The returned pointer is only valid while `caller` is alive.
+#[inline]
+fn caller_ptr(caller: &Option<ZString>) -> *const c_char {
+    match caller {
+        Some(name) => name.as_c_str_ptr(),
         None => NO_CALLER.as_ptr(),
     }
 }
@@ -41,22 +55,18 @@ fn get_arg_type_name(execute_data: &ExecuteData) -> *const c_char {
 }
 
 // Extracts an array property from a ZVal object and joins its string values with a space delimiter.
-// Returns an empty string if the property doesn't exist or isn't an array.
+// Returns an empty CString if the property doesn't exist or isn't an array.
 #[inline]
-fn extract_string_array_property(zval: &ZVal, property_name: &str) -> String {
-    zval.as_z_obj()
+fn extract_string_array_property(zval: &ZVal, property_name: &str) -> CString {
+    let bytes = zval
+        .as_z_obj()
         .map(|zobj| {
             let prop = zobj.get_property(property_name);
-            prop.as_z_arr()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|(_, v)| z_val_to_string(v))
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_default()
+            prop.as_z_arr().map(join_z_arr_strings).unwrap_or_default()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    bytes_to_cstring(&bytes)
 }
 
 pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
@@ -70,7 +80,8 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
 
     let request_id = get_request_id(server);
 
-    // Extract caller before shadowing execute_data
+    // Extract caller before shadowing execute_data. Held as an owned value for
+    // the rest of this function so the probe can read through it.
     let caller = get_caller_name(execute_data);
 
     let _execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
@@ -78,9 +89,10 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
         None => return,
     };
 
+    // Bound to locals so they outlive the probe call below.
     let mut cache_max_age: i64 = -1;
-    let mut cache_tags = String::new();
-    let mut cache_contexts = String::new();
+    let mut cache_tags = CString::default();
+    let mut cache_contexts = CString::default();
 
     if !return_value.is_null()
         && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
@@ -95,19 +107,14 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
         cache_contexts = extract_string_array_property(ret, "cacheContexts");
     }
 
-    // Convert to CStrings for probe - these must outlive the probe call
-    // Use unwrap_or_else to handle potential NUL bytes in strings without panicking
-    let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
-    let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
-
     probe_lazy!(
         compass,
         drupal_cacheablemetadata_createfromrenderarray,
         request_id.as_ptr(),
-        caller,
+        caller_ptr(&caller),
         cache_max_age,
-        cache_tags_cstr.as_ptr(),
-        cache_contexts_cstr.as_ptr(),
+        cache_tags.as_ptr(),
+        cache_contexts.as_ptr(),
     );
 }
 
@@ -122,7 +129,8 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
 
     let request_id = get_request_id(server);
 
-    // Extract caller before shadowing execute_data
+    // Extract caller before shadowing execute_data. Held as an owned value for
+    // the rest of this function so the probe can read through it.
     let caller = get_caller_name(execute_data);
 
     let execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
@@ -132,9 +140,10 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
 
     let arg_type_cstr_ptr = get_arg_type_name(execute_data);
 
+    // Bound to locals so they outlive the probe call below.
     let mut cache_max_age: i64 = -1;
-    let mut cache_tags = String::new();
-    let mut cache_contexts = String::new();
+    let mut cache_tags = CString::default();
+    let mut cache_contexts = CString::default();
 
     if !return_value.is_null()
         && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
@@ -149,19 +158,14 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
         cache_contexts = extract_string_array_property(ret, "cacheContexts");
     }
 
-    // Convert to CStrings for probe - these must outlive the probe call
-    // Use unwrap_or_else to handle potential NUL bytes in strings without panicking
-    let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
-    let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
-
     probe_lazy!(
         compass,
         drupal_cacheablemetadata_createfromobject,
         request_id.as_ptr(),
-        caller,
+        caller_ptr(&caller),
         cache_max_age,
         arg_type_cstr_ptr,
-        cache_tags_cstr.as_ptr(),
-        cache_contexts_cstr.as_ptr(),
+        cache_tags.as_ptr(),
+        cache_contexts.as_ptr(),
     );
 }

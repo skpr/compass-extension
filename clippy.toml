@@ -1,0 +1,11 @@
+# USDT string arguments are read by the tracer with bpf_probe_read_user_str,
+# which scans until a NUL byte. A pointer into a Rust String/str is not NUL
+# terminated, so the tracer reads past the end of the allocation into adjacent
+# heap - corrupting the value and leaking whatever follows it. Build a CString
+# instead: see util::bytes_to_cstring.
+#
+# One entry covers both String and str: String has no inherent as_ptr, it derefs
+# to str, so String::as_ptr call sites are reported as str::as_ptr.
+disallowed-methods = [
+  { path = "str::as_ptr", reason = "not NUL terminated; probe args must be a CString (see util::bytes_to_cstring)" },
+]

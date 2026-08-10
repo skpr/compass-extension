@@ -16,3 +16,61 @@ run = "cargo clippy --all-targets --all-features -- -D warnings"
 description = "Build Compass binaries"
 run = "cargo build --release"
 
+[tasks.validate]
+description = "Validate the USDT probe contract against probes.spec"
+run = "./scripts/validate-probes.sh"
+depends = ["build"]
+
+[tasks.fixture]
+description = "The extension must not change what PHP does"
+run = """
+set -eu
+SO="${CARGO_TARGET_DIR:-$PWD/target}/release/libcompass_extension.so"
+OUT=$(mktemp -d)
+trap 'rm -rf "$OUT"' EXIT
+
+# The fixture drives every dispatch path: the PDO seam, both Drupal probe names,
+# decoy classes sharing those bare names in the wrong scope, and enough ordinary
+# calls to shake out the always-installed observer handlers.
+#
+# Note the absence of -n. pdo and pdo_sqlite are loaded from the ini scan dir;
+# passing them as repeated -d extension= would not work, since each -d overwrites
+# the same ini key rather than appending.
+php scripts/fixture.php > "$OUT/control"
+
+for cfg in "compass.enabled=0" "compass.enabled=1"; do
+  php -d extension="$SO" -d "$cfg" scripts/fixture.php > "$OUT/case"
+  diff -u "$OUT/control" "$OUT/case" || { echo "FAIL: output differs with $cfg"; exit 1; }
+done
+
+# threshold=0 forces every single call down the instrumented path.
+php -d extension="$SO" -d compass.enabled=1 -d compass.function_threshold=0 \\
+    scripts/fixture.php > "$OUT/case"
+diff -u "$OUT/control" "$OUT/case" || { echo "FAIL: output differs at threshold=0"; exit 1; }
+
+grep -q '^OK$' "$OUT/control" || { echo "FAIL: fixture did not run to completion"; exit 1; }
+echo "fixture OK"
+"""
+depends = ["build"]
+
+[tasks.smoke]
+description = "Load the built extension into a real PHP runtime"
+run = """
+set -eu
+SO="${CARGO_TARGET_DIR:-$PWD/target}/release/libcompass_extension.so"
+
+# Registered under the expected name.
+php -n -d extension="$SO" -m | grep -qx compass
+
+# MINIT runs, and both ini directives are registered and take a value.
+php -n -d extension="$SO" -d compass.enabled=1 --ri compass | grep -q 'compass.enabled'
+php -n -d extension="$SO" -d compass.enabled=1 --ri compass | grep -q 'compass.function_threshold'
+
+# Observers install and a real request completes with the extension active. The
+# threshold is dropped to 0 so every function takes the instrumented path.
+php -n -d extension="$SO" -d compass.enabled=1 -d compass.function_threshold=0 \\
+    -r 'function f($n) { return $n < 2 ? $n : f($n - 1) + f($n - 2); } exit(f(18) === 2584 ? 0 : 1);'
+
+echo "smoke OK"
+"""
+depends = ["build"]

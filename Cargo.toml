@@ -6,6 +6,13 @@ edition = "2024"
 [lib]
 name = "compass_extension"
 crate-type = ["lib", "cdylib"]
+# `cargo test` builds the lib target as an executable, and executables - unlike
+# shared objects - cannot tolerate the undefined Zend symbols that PHP resolves
+# at dlopen time. Without this, `cargo test` fails to link with a wall of
+# "undefined reference to zend_hash_index_find" rather than anything useful.
+# Real unit tests need the pure logic split into a crate with no phper
+# dependency; see scripts/validate-probes.sh for what is checked today.
+test = false
 
 [dependencies]
 anyhow = "1.0.100"
@@ -16,8 +23,8 @@ once_cell = "1.21.3"
 nix = "0.30.1"
 chrono = "0.4.43"
 tracing = "0.1.44"
+uuid = { version = "1", features = ["v4"] }
 rustc-hash = "2.1.1"
-cached = "0.56"
 
 [profile.release]
 opt-level = 3

@@ -1,7 +1,7 @@
 use crate::function_observer::observe_function_end;
 use crate::util::{
-    get_request_id, get_request_method, get_request_server, get_request_uri, get_sapi_module_name,
-    init_and_get_server,
+    ensure_request_id, get_request_id, get_request_method, get_request_server, get_request_uri,
+    get_sapi_module_name, init_and_get_server,
 };
 
 use once_cell::sync::Lazy;
@@ -20,6 +20,12 @@ pub unsafe extern "C" fn observer_end(
     execute_data: *mut sys::zend_execute_data,
     _return_value: *mut sys::zval,
 ) {
+    // Cheapest possible exit when nobody is listening: one thread-local load.
+    // Everything below allocates.
+    if !crate::canary::is_traced() {
+        return;
+    }
+
     let obs = match observe_function_end(execute_data) {
         Some(o) => o,
         None => return,
@@ -47,9 +53,18 @@ pub fn init() {
         return;
     }
 
-    let server = match init_and_get_server() {
-        Some(s) => s,
-        None => return,
+    // Perform JIT initialization to ensure $_SERVER is materialized,
+    // then generate a request ID if one was not provided via header.
+    if init_and_get_server().is_none() {
+        return;
+    }
+    ensure_request_id();
+
+    // Re-fetch server as an immutable reference after the mutable
+    // ensure_request_id() call to avoid aliasing issues.
+    let server = match get_request_server() {
+        Ok(s) => s,
+        Err(_) => return,
     };
 
     let request_id = get_request_id(server);
