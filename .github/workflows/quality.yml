@@ -28,3 +28,7 @@ jobs:
       - name: 📋 Format
         run: |
           docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise lint
+
+      - name: 📋 Probe Guard
+        run: |
+          docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise probe-guard

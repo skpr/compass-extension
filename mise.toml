@@ -12,6 +12,17 @@ run = "cargo fmt --all -- --check"
 description = "Run clippy for static analysis"
 run = "cargo clippy --all-targets --all-features -- -D warnings"
 
+[tasks.probe-guard]
+description = "Ensure probes are fired through the type-checked compass_probe! macro"
+run = """
+# Plain grep flags only: the devcontainer that runs this in CI has busybox grep.
+if grep -rn 'probe_lazy!' src | grep -v '^src/probe_str.rs:'; then
+  echo "error: fire probes with compass_probe! (src/probe_str.rs), not probe_lazy! directly." >&2
+  echo "compass_probe! type-checks its arguments so a non-NUL-terminated pointer cannot reach a probe." >&2
+  exit 1
+fi
+"""
+
 [tasks.build]
 description = "Build Compass binaries"
 run = "cargo build --release"
