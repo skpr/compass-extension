@@ -1,4 +1,5 @@
 use crate::function_observer::observe_function_end;
+use crate::probe_str::{ProbeStr, compass_probe};
 use crate::util::{
     get_request_id, get_request_method, get_request_server, get_request_uri, get_sapi_module_name,
     init_and_get_server,
@@ -6,7 +7,6 @@ use crate::util::{
 
 use once_cell::sync::Lazy;
 use phper::sys;
-use probe::probe_lazy;
 use tracing::error;
 
 static IS_FPM: Lazy<bool> = Lazy::new(|| get_sapi_module_name().to_bytes() == b"fpm-fcgi");
@@ -32,11 +32,10 @@ pub unsafe extern "C" fn observer_end(
 
     let request_id = get_request_id(server);
 
-    probe_lazy!(
-        compass,
+    compass_probe!(
         fpm_function,
-        request_id.as_ptr(),
-        obs.function_name.as_c_str_ptr(),
+        ProbeStr::from(&request_id),
+        ProbeStr::from_zend_str(&obs.function_name),
         obs.elapsed,
         obs.memory,
     );
@@ -56,12 +55,11 @@ pub fn init() {
     let uri = get_request_uri(server);
     let method = get_request_method(server);
 
-    probe_lazy!(
-        compass,
+    compass_probe!(
         fpm_request_init,
-        request_id.as_ptr(),
-        uri.as_ptr(),
-        method.as_ptr()
+        ProbeStr::from(&request_id),
+        ProbeStr::from(&uri),
+        ProbeStr::from(&method),
     );
 }
 
@@ -82,5 +80,5 @@ pub fn shutdown() {
 
     let request_id = get_request_id(server);
 
-    probe_lazy!(compass, fpm_request_shutdown, request_id.as_ptr());
+    compass_probe!(fpm_request_shutdown, ProbeStr::from(&request_id));
 }

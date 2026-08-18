@@ -1,42 +1,50 @@
+use crate::probe_str::{ProbeStr, compass_probe};
 use crate::util::{get_request_id, get_request_server, z_val_to_string};
 use phper::values::ZVal;
 use phper::{sys, values::ExecuteData};
-use probe::probe_lazy;
-use std::ffi::{CStr, CString, c_char};
-use std::ptr;
+use std::ffi::{CStr, CString};
 
 // Used when a function has no caller (top-level execution)
 const NO_CALLER: &CStr = c"(no caller)";
 
+// Used when the argument's class name cannot be read.
+const UNKNOWN_TYPE: &CStr = c"(unknown)";
+
 // Extracts the caller (class::method or function name) from the previous execute_data frame.
-// Returns a pointer to a C string representing the caller's fully-qualified name,
-// or a pointer to "(no caller)" if no previous frame exists.
+// Returns the caller's fully-qualified name, or "(no caller)" if no previous frame exists.
 #[inline]
-fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> *const c_char {
+fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> ProbeStr<'static> {
     let prev_ptr = unsafe { (*execute_data).prev_execute_data };
     match unsafe { ExecuteData::try_from_mut_ptr(prev_ptr) } {
         Some(prev) => {
             let name = prev.func().get_function_or_method_name();
-            unsafe { CStr::from_ptr(name.as_c_str_ptr()) }.as_ptr()
+            // SAFETY: the zend_string behind `name` is NUL-terminated. Its lifetime is
+            // NOT actually 'static — `name` is dropped when this arm returns, so the
+            // pointer dangles. See plans/02-dangling-caller-pointer-in-drupal-probes.md,
+            // which fixes the lifetime; this pass only covers NUL termination.
+            unsafe { ProbeStr::from_raw(name.as_c_str_ptr()) }
         }
-        None => NO_CALLER.as_ptr(),
+        None => ProbeStr::from(NO_CALLER),
     }
 }
 
 // Extracts the type/class name from the first argument of createFromObject.
-// Returns a pointer to a C string representing either the class name (for objects)
-// or the base type name (for primitives).
+// Returns either the class name (for objects) or the base type name (for primitives).
 #[inline]
-fn get_arg_type_name(execute_data: &ExecuteData) -> *const c_char {
+fn get_arg_type_name(execute_data: &ExecuteData) -> ProbeStr<'static> {
     let arg0 = execute_data.get_parameter(0);
     let ti = arg0.get_type_info().get_base_type();
 
     if ti.is_object() {
         arg0.as_z_obj()
-            .map(|obj| obj.get_class().get_name().as_c_str_ptr())
-            .unwrap_or(ptr::null())
+            .map(|obj| {
+                // SAFETY: a class entry's name is a NUL-terminated zend_string that
+                // lives as long as the class is loaded, which outlives this request.
+                unsafe { ProbeStr::from_raw(obj.get_class().get_name().as_c_str_ptr()) }
+            })
+            .unwrap_or(ProbeStr::from(UNKNOWN_TYPE))
     } else {
-        ti.get_base_type_name().as_ptr()
+        ProbeStr::from(ti.get_base_type_name())
     }
 }
 
@@ -100,14 +108,13 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
     let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
     let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
 
-    probe_lazy!(
-        compass,
+    compass_probe!(
         drupal_cacheablemetadata_createfromrenderarray,
-        request_id.as_ptr(),
+        ProbeStr::from(&request_id),
         caller,
         cache_max_age,
-        cache_tags_cstr.as_ptr(),
-        cache_contexts_cstr.as_ptr(),
+        ProbeStr::from(&cache_tags_cstr),
+        ProbeStr::from(&cache_contexts_cstr),
     );
 }
 
@@ -130,7 +137,7 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
         None => return,
     };
 
-    let arg_type_cstr_ptr = get_arg_type_name(execute_data);
+    let arg_type = get_arg_type_name(execute_data);
 
     let mut cache_max_age: i64 = -1;
     let mut cache_tags = String::new();
@@ -154,14 +161,13 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
     let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
     let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
 
-    probe_lazy!(
-        compass,
+    compass_probe!(
         drupal_cacheablemetadata_createfromobject,
-        request_id.as_ptr(),
+        ProbeStr::from(&request_id),
         caller,
         cache_max_age,
-        arg_type_cstr_ptr,
-        cache_tags_cstr.as_ptr(),
-        cache_contexts_cstr.as_ptr(),
+        arg_type,
+        ProbeStr::from(&cache_tags_cstr),
+        ProbeStr::from(&cache_contexts_cstr),
     );
 }

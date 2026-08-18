@@ -5,6 +5,7 @@ mod enabled;
 mod fpm;
 mod function_observer;
 mod observer;
+mod probe_str;
 mod threshold;
 mod util;
 
