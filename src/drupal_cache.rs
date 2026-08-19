@@ -62,26 +62,24 @@ fn extract_string_array_property(zval: &ZVal, property_name: &str) -> String {
         .unwrap_or_default()
 }
 
-pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
-    execute_data: *mut sys::zend_execute_data,
-    return_value: *mut sys::zval,
-) {
-    // Extract caller before shadowing execute_data. `caller_name` owns the bytes the
-    // probe reads, so it has to stay bound until after compass_probe! fires.
-    let caller_name = get_caller_name(execute_data);
-    let caller = match &caller_name {
-        Some(name) => ProbeStr::from_zend_str(name),
-        None => ProbeStr::from(NO_CALLER),
-    };
+// The cacheability fields both observers report. Reading them lives in one place so a
+// correction cannot land in one observer and quietly miss the other.
+struct CacheableMetadata {
+    max_age: i64,
+    tags: CString,
+    contexts: CString,
+}
 
-    let _execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
-        Some(data) => data,
-        None => return,
-    };
-
-    let mut cache_max_age: i64 = -1;
-    let mut cache_tags = String::new();
-    let mut cache_contexts = String::new();
+// Reads the cacheability metadata off an observer's return value. A missing or unreadable
+// value yields the defaults the probes have always reported: -1 and empty strings.
+//
+// # Safety
+//
+// `return_value` must be null or point to a zval that stays valid for the call.
+unsafe fn extract_cacheable_metadata(return_value: *mut sys::zval) -> CacheableMetadata {
+    let mut max_age: i64 = -1;
+    let mut tags = String::new();
+    let mut contexts = String::new();
 
     if !return_value.is_null()
         && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
@@ -89,26 +87,45 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
         if let Some(zobj) = ret.as_z_obj() {
             let max_age_zv = zobj.get_property("cacheMaxAge");
             if let Some(v) = max_age_zv.as_long() {
-                cache_max_age = v;
+                max_age = v;
             }
         }
-        cache_tags = extract_string_array_property(ret, "cacheTags");
-        cache_contexts = extract_string_array_property(ret, "cacheContexts");
+        tags = extract_string_array_property(ret, "cacheTags");
+        contexts = extract_string_array_property(ret, "cacheContexts");
     }
 
-    // Convert to CStrings for probe - these must outlive the probe call
-    // Use unwrap_or_else to handle potential NUL bytes in strings without panicking
-    let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
-    let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
+    // Converted here rather than at the probe so the owner outlives the probe call. A PHP
+    // string is binary safe, so a value with an interior NUL has no C representation and
+    // becomes empty rather than panicking in a request path.
+    CacheableMetadata {
+        max_age,
+        tags: CString::new(tags).unwrap_or_default(),
+        contexts: CString::new(contexts).unwrap_or_default(),
+    }
+}
+
+pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
+    execute_data: *mut sys::zend_execute_data,
+    return_value: *mut sys::zval,
+) {
+    // `caller_name` owns the bytes the probe reads, so it has to stay bound until after
+    // compass_probe! fires.
+    let caller_name = get_caller_name(execute_data);
+    let caller = match &caller_name {
+        Some(name) => ProbeStr::from_zend_str(name),
+        None => ProbeStr::from(NO_CALLER),
+    };
+
+    let metadata = unsafe { extract_cacheable_metadata(return_value) };
 
     with_request_id(|request_id| {
         compass_probe!(
             drupal_cacheablemetadata_createfromrenderarray,
             request_id,
             caller,
-            cache_max_age,
-            ProbeStr::from(&cache_tags_cstr),
-            ProbeStr::from(&cache_contexts_cstr),
+            metadata.max_age,
+            ProbeStr::from(&metadata.tags),
+            ProbeStr::from(&metadata.contexts),
         );
     });
 }
@@ -132,37 +149,17 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
 
     let arg_type = get_arg_type_name(execute_data);
 
-    let mut cache_max_age: i64 = -1;
-    let mut cache_tags = String::new();
-    let mut cache_contexts = String::new();
-
-    if !return_value.is_null()
-        && let Some(ret) = unsafe { ZVal::try_from_mut_ptr(return_value) }
-    {
-        if let Some(zobj) = ret.as_z_obj() {
-            let max_age_zv = zobj.get_property("cacheMaxAge");
-            if let Some(v) = max_age_zv.as_long() {
-                cache_max_age = v;
-            }
-        }
-        cache_tags = extract_string_array_property(ret, "cacheTags");
-        cache_contexts = extract_string_array_property(ret, "cacheContexts");
-    }
-
-    // Convert to CStrings for probe - these must outlive the probe call
-    // Use unwrap_or_else to handle potential NUL bytes in strings without panicking
-    let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
-    let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
+    let metadata = unsafe { extract_cacheable_metadata(return_value) };
 
     with_request_id(|request_id| {
         compass_probe!(
             drupal_cacheablemetadata_createfromobject,
             request_id,
             caller,
-            cache_max_age,
+            metadata.max_age,
             arg_type,
-            ProbeStr::from(&cache_tags_cstr),
-            ProbeStr::from(&cache_contexts_cstr),
+            ProbeStr::from(&metadata.tags),
+            ProbeStr::from(&metadata.contexts),
         );
     });
 }
