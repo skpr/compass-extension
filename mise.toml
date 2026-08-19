@@ -27,3 +27,52 @@ fi
 description = "Build Compass binaries"
 run = "cargo build --release"
 
+
+[tasks.smoke]
+description = "Build the release cdylib and prove PHP can load and run it"
+run = """
+# Plain POSIX sh and plain grep flags: the devcontainer that runs this in CI is Alpine.
+set -e
+
+cargo build --release
+
+EXTENSION="$(pwd)/target/release/libcompass_extension.so"
+
+# PHP only warns when a module fails to load — it still exits 0 — so every check below
+# asserts on output rather than on a status code.
+
+# Clippy type-checks but never links the cdylib. This is the first thing in the pipeline
+# that proves the release profile (lto, panic=abort, strip) produces a loadable module,
+# and that module init survives registering its INI entries and observer hook.
+if ! php -d extension="$EXTENSION" -m | grep -q '^compass_extension$'; then
+  echo "error: compass_extension is missing from php -m, so the module did not load." >&2
+  php -d extension="$EXTENSION" -m >&2
+  exit 1
+fi
+
+# Reading the INI entries back is the cheapest evidence that module init actually ran.
+THRESHOLD=$(php -d extension="$EXTENSION" -d compass.enabled=1 -d compass.function_threshold=1234567 -r 'echo ini_get("compass.function_threshold");')
+if [ "$THRESHOLD" != "1234567" ]; then
+  echo "error: compass.function_threshold read back as '$THRESHOLD', expected 1234567." >&2
+  exit 1
+fi
+
+ENABLED=$(php -d extension="$EXTENSION" -d compass.enabled=1 -r 'echo ini_get("compass.enabled");')
+if [ "$ENABLED" != "1" ]; then
+  echo "error: compass.enabled read back as '$ENABLED', expected 1." >&2
+  exit 1
+fi
+
+# Both settings, because they take different paths: enabled=1 installs the observer and
+# runs the untraced fast path, enabled=0 skips registration altogether and is what most
+# PHP processes on a box are actually running.
+for FLAG in 1 0; do
+  OUTPUT=$(php -d extension="$EXTENSION" -d compass.enabled="$FLAG" -r 'function slow() { usleep(2000); return "ok"; } echo slow();')
+  if [ "$OUTPUT" != "ok" ]; then
+    echo "error: script with compass.enabled=$FLAG printed '$OUTPUT', expected ok." >&2
+    exit 1
+  fi
+done
+
+echo "smoke: module loads, INI entries register, scripts run with compass.enabled=1 and 0."
+"""
