@@ -1,5 +1,5 @@
 use crate::probe_str::{ProbeStr, compass_probe};
-use crate::util::{get_request_id, get_request_server, z_val_to_string};
+use crate::util::{with_request_id, z_val_to_string};
 use phper::strings::ZString;
 use phper::values::ZVal;
 use phper::{sys, values::ExecuteData};
@@ -66,13 +66,6 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
     execute_data: *mut sys::zend_execute_data,
     return_value: *mut sys::zval,
 ) {
-    let server = match get_request_server() {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-
-    let request_id = get_request_id(server);
-
     // Extract caller before shadowing execute_data. `caller_name` owns the bytes the
     // probe reads, so it has to stay bound until after compass_probe! fires.
     let caller_name = get_caller_name(execute_data);
@@ -108,27 +101,22 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
     let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
     let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
 
-    compass_probe!(
-        drupal_cacheablemetadata_createfromrenderarray,
-        ProbeStr::from(&request_id),
-        caller,
-        cache_max_age,
-        ProbeStr::from(&cache_tags_cstr),
-        ProbeStr::from(&cache_contexts_cstr),
-    );
+    with_request_id(|request_id| {
+        compass_probe!(
+            drupal_cacheablemetadata_createfromrenderarray,
+            request_id,
+            caller,
+            cache_max_age,
+            ProbeStr::from(&cache_tags_cstr),
+            ProbeStr::from(&cache_contexts_cstr),
+        );
+    });
 }
 
 pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
     execute_data: *mut sys::zend_execute_data,
     return_value: *mut sys::zval,
 ) {
-    let server = match get_request_server() {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-
-    let request_id = get_request_id(server);
-
     // Extract caller before shadowing execute_data. `caller_name` owns the bytes the
     // probe reads, so it has to stay bound until after compass_probe! fires.
     let caller_name = get_caller_name(execute_data);
@@ -166,13 +154,15 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
     let cache_tags_cstr = CString::new(cache_tags).unwrap_or_else(|_| CString::default());
     let cache_contexts_cstr = CString::new(cache_contexts).unwrap_or_else(|_| CString::default());
 
-    compass_probe!(
-        drupal_cacheablemetadata_createfromobject,
-        ProbeStr::from(&request_id),
-        caller,
-        cache_max_age,
-        arg_type,
-        ProbeStr::from(&cache_tags_cstr),
-        ProbeStr::from(&cache_contexts_cstr),
-    );
+    with_request_id(|request_id| {
+        compass_probe!(
+            drupal_cacheablemetadata_createfromobject,
+            request_id,
+            caller,
+            cache_max_age,
+            arg_type,
+            ProbeStr::from(&cache_tags_cstr),
+            ProbeStr::from(&cache_contexts_cstr),
+        );
+    });
 }

@@ -1,7 +1,20 @@
+use crate::probe_str::ProbeStr;
 use anyhow::Context;
 use phper::{arrays::ZArr, eg, pg, sys, values::ZVal};
+use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, CString};
 use tracing::error;
+
+thread_local! {
+    // The request ID never changes within a request, but every probe needs it. Caching
+    // the CString the probe actually wants keeps the symbol table lookup and the
+    // allocation off the observer paths, which run per function return.
+    static REQUEST_ID: RefCell<Option<CString>> = const { RefCell::new(None) };
+
+    // Filled per request rather than once per process: PHP-FPM forks its workers, so a
+    // value cached before the fork would report the master's PID from every worker.
+    static PID: Cell<Option<u64>> = const { Cell::new(None) };
+}
 
 // https://github.com/apache/skywalking-php/blob/master/src/request.rs#L93
 pub fn jit_initialization() {
@@ -53,6 +66,42 @@ pub fn get_request_method(server: &ZArr) -> CString {
         .unwrap_or_else(|| c"UNKNOWN".to_owned())
 }
 
+// Caches the values that are fixed for the request. Called from the init paths, where
+// $_SERVER has already been read for the request-init probe.
+pub fn cache_request_values(server: &ZArr) {
+    let request_id = get_request_id(server);
+    REQUEST_ID.with(|cell| *cell.borrow_mut() = Some(request_id));
+    PID.with(|pid| pid.set(Some(std::process::id() as u64)));
+}
+
+// Drops the cached values. An FPM worker serves the next request on the same thread, and
+// attributing the previous request's ID to it is worse than reporting nothing.
+pub fn clear_request_values() {
+    REQUEST_ID.with(|cell| *cell.borrow_mut() = None);
+    PID.with(|pid| pid.set(None));
+}
+
+// Runs `f` with the request ID as a probe argument, doing nothing if there is no ID to
+// report. Passing it through a closure is what keeps the probe's view of the string tied
+// to a live borrow, so the compiler still enforces the lifetime.
+//
+// The uncached branch covers an observer that fires before the init path has run; it
+// costs what every probe used to.
+pub fn with_request_id(f: impl FnOnce(ProbeStr<'_>)) {
+    REQUEST_ID.with(|cell| {
+        if let Some(request_id) = cell.borrow().as_ref() {
+            f(ProbeStr::from(request_id));
+            return;
+        }
+
+        let Ok(server) = get_request_server() else {
+            return;
+        };
+
+        f(ProbeStr::from(&get_request_id(server)));
+    });
+}
+
 // https://github.com/apache/skywalking-php/blob/master/src/util.rs#L63
 pub fn z_val_to_string(zv: &ZVal) -> Option<String> {
     zv.as_z_str()
@@ -70,7 +119,8 @@ pub fn z_val_to_cstring(zv: &ZVal) -> Option<CString> {
 }
 
 pub fn get_pid() -> u64 {
-    std::process::id() as u64
+    PID.with(|pid| pid.get())
+        .unwrap_or_else(|| std::process::id() as u64)
 }
 
 pub fn get_cli_command(server: &ZArr) -> CString {
