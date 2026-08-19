@@ -46,6 +46,10 @@ pub fn on_request_init() {
         return;
     }
 
+    // Ahead of the canary check: a previous request may have left timers behind, and
+    // that has to be cleaned up whether or not a tracer is attached for this one.
+    function_observer::reset();
+
     if !canary::probe_enabled() {
         return;
     }
