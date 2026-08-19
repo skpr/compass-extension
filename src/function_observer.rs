@@ -8,10 +8,33 @@ thread_local! {
     static FUNCTION_TIMES: RefCell<Vec<(usize, Instant)>> = RefCell::new(Vec::with_capacity(32));
 }
 
+// Depth past which start times are no longer recorded. Lookup is a linear scan of the
+// stack on every function return, so a runaway recursion that grew this without bound
+// would slow down the rest of the request. Losing timings for the frames beyond the cap
+// is the cheaper failure.
+const MAX_TRACKED_FRAMES: usize = 1024;
+
 #[inline(always)]
 pub fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
     let key = exec_ptr as usize;
-    FUNCTION_TIMES.with(|stack| stack.borrow_mut().push((key, now)));
+    FUNCTION_TIMES.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        if stack.len() < MAX_TRACKED_FRAMES {
+            stack.push((key, now));
+        }
+    });
+}
+
+// Drops any start times left over from an earlier request, keeping the allocation.
+//
+// Entries are removed by the matching end handler, but zend_bailout (fatal error,
+// exit()) longjmps straight past it, so every frame live at that moment leaks. An FPM
+// worker serves thousands of requests on one thread, so without this the leaks pile up
+// for the life of the worker. The keys are raw execute_data addresses, which the engine
+// reuses — a stale entry matched by an unrelated later frame reports a nonsense elapsed
+// time, not just a slower scan.
+pub fn reset() {
+    FUNCTION_TIMES.with(|stack| stack.borrow_mut().clear());
 }
 
 #[inline(always)]
