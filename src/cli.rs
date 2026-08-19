@@ -1,6 +1,8 @@
 use crate::function_observer::observe_function_end;
 use crate::probe_str::{ProbeStr, compass_probe};
-use crate::util::{get_cli_command, get_pid, get_sapi_module_name, init_and_get_server};
+use crate::util::{
+    cache_request_values, get_cli_command, get_pid, get_sapi_module_name, init_and_get_server,
+};
 
 use once_cell::sync::Lazy;
 use phper::sys;
@@ -41,6 +43,8 @@ pub fn init() {
         Some(s) => s,
         None => return,
     };
+
+    cache_request_values(server);
 
     let pid = get_pid();
     let command = get_cli_command(server);

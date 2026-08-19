@@ -63,10 +63,13 @@ pub fn on_request_shutdown() {
         return;
     }
 
-    if !canary::probe_enabled() {
-        return;
+    if canary::probe_enabled() {
+        fpm::shutdown();
+        cli::shutdown();
     }
 
-    fpm::shutdown();
-    cli::shutdown();
+    // After the shutdown probes have read them, and outside the canary check: a worker
+    // reuses this thread, so anything left here would be reported against the next
+    // request if a tracer attaches part way through it.
+    util::clear_request_values();
 }
