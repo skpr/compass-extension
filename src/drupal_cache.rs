@@ -1,5 +1,6 @@
 use crate::probe_str::{ProbeStr, compass_probe};
 use crate::util::{get_request_id, get_request_server, z_val_to_string};
+use phper::strings::ZString;
 use phper::values::ZVal;
 use phper::{sys, values::ExecuteData};
 use std::ffi::{CStr, CString};
@@ -11,21 +12,15 @@ const NO_CALLER: &CStr = c"(no caller)";
 const UNKNOWN_TYPE: &CStr = c"(unknown)";
 
 // Extracts the caller (class::method or function name) from the previous execute_data frame.
-// Returns the caller's fully-qualified name, or "(no caller)" if no previous frame exists.
+// Returns None when there is no previous frame (top-level execution).
+//
+// The owning ZString is returned rather than a ProbeStr: the name has to stay alive until
+// the probe has read it, and only the call site knows how long that is.
 #[inline]
-fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> ProbeStr<'static> {
+fn get_caller_name(execute_data: *mut sys::zend_execute_data) -> Option<ZString> {
     let prev_ptr = unsafe { (*execute_data).prev_execute_data };
-    match unsafe { ExecuteData::try_from_mut_ptr(prev_ptr) } {
-        Some(prev) => {
-            let name = prev.func().get_function_or_method_name();
-            // SAFETY: the zend_string behind `name` is NUL-terminated. Its lifetime is
-            // NOT actually 'static — `name` is dropped when this arm returns, so the
-            // pointer dangles. See plans/02-dangling-caller-pointer-in-drupal-probes.md,
-            // which fixes the lifetime; this pass only covers NUL termination.
-            unsafe { ProbeStr::from_raw(name.as_c_str_ptr()) }
-        }
-        None => ProbeStr::from(NO_CALLER),
-    }
+    let prev = unsafe { ExecuteData::try_from_mut_ptr(prev_ptr) }?;
+    Some(prev.func().get_function_or_method_name())
 }
 
 // Extracts the type/class name from the first argument of createFromObject.
@@ -78,8 +73,13 @@ pub unsafe extern "C" fn cacheablemetadata_createfromrenderarray_observer_end(
 
     let request_id = get_request_id(server);
 
-    // Extract caller before shadowing execute_data
-    let caller = get_caller_name(execute_data);
+    // Extract caller before shadowing execute_data. `caller_name` owns the bytes the
+    // probe reads, so it has to stay bound until after compass_probe! fires.
+    let caller_name = get_caller_name(execute_data);
+    let caller = match &caller_name {
+        Some(name) => ProbeStr::from_zend_str(name),
+        None => ProbeStr::from(NO_CALLER),
+    };
 
     let _execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
         Some(data) => data,
@@ -129,8 +129,13 @@ pub unsafe extern "C" fn cacheablemetadata_createfromobject_observer_end(
 
     let request_id = get_request_id(server);
 
-    // Extract caller before shadowing execute_data
-    let caller = get_caller_name(execute_data);
+    // Extract caller before shadowing execute_data. `caller_name` owns the bytes the
+    // probe reads, so it has to stay bound until after compass_probe! fires.
+    let caller_name = get_caller_name(execute_data);
+    let caller = match &caller_name {
+        Some(name) => ProbeStr::from_zend_str(name),
+        None => ProbeStr::from(NO_CALLER),
+    };
 
     let execute_data = match unsafe { ExecuteData::try_from_mut_ptr(execute_data) } {
         Some(data) => data,
