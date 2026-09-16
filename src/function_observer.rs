@@ -1,11 +1,11 @@
+use crate::clock;
 use crate::threshold;
 use phper::strings::ZString;
 use phper::{sys, values::ExecuteData};
-use quanta::Instant;
 use std::cell::RefCell;
 
 thread_local! {
-    static FUNCTION_TIMES: RefCell<Vec<(usize, Instant)>> = RefCell::new(Vec::with_capacity(32));
+    static FUNCTION_TIMES: RefCell<Vec<(usize, u64)>> = RefCell::new(Vec::with_capacity(32));
 }
 
 // Depth past which start times are no longer recorded. Lookup is a linear scan of the
@@ -15,7 +15,7 @@ thread_local! {
 const MAX_TRACKED_FRAMES: usize = 1024;
 
 #[inline(always)]
-pub fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: Instant) {
+pub fn set_function_time(exec_ptr: *mut sys::zend_execute_data, now: u64) {
     let key = exec_ptr as usize;
     FUNCTION_TIMES.with(|stack| {
         let mut stack = stack.borrow_mut();
@@ -44,7 +44,7 @@ pub fn take_elapsed_if_over_threshold(exec_ptr: *mut sys::zend_execute_data) -> 
         let mut stack = stack.borrow_mut();
         if let Some(pos) = stack.iter().rposition(|(k, _)| *k == key) {
             let (_, start) = stack.swap_remove(pos);
-            let elapsed = start.elapsed().as_nanos() as u64;
+            let elapsed = clock::delta_nanos(start, clock::raw());
             if threshold::is_over_function_threshold(elapsed) {
                 return Some(elapsed);
             }
@@ -54,7 +54,7 @@ pub fn take_elapsed_if_over_threshold(exec_ptr: *mut sys::zend_execute_data) -> 
 }
 
 pub unsafe extern "C" fn observer_begin(execute_data: *mut sys::zend_execute_data) {
-    set_function_time(execute_data, Instant::now());
+    set_function_time(execute_data, clock::raw());
 }
 
 pub struct FunctionObservation {
