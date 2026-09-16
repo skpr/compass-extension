@@ -1,5 +1,5 @@
 use crate::clock;
-use crate::threshold;
+use crate::config;
 use phper::strings::ZString;
 use phper::{sys, values::ExecuteData};
 use std::cell::RefCell;
@@ -42,14 +42,21 @@ pub fn take_elapsed_if_over_threshold(exec_ptr: *mut sys::zend_execute_data) -> 
     let key = exec_ptr as usize;
     FUNCTION_TIMES.with(|stack| {
         let mut stack = stack.borrow_mut();
-        if let Some(pos) = stack.iter().rposition(|(k, _)| *k == key) {
-            let (_, start) = stack.swap_remove(pos);
-            let elapsed = clock::delta_nanos(start, clock::raw());
-            if threshold::is_over_function_threshold(elapsed) {
-                return Some(elapsed);
-            }
-        }
-        None
+        let pos = stack.iter().rposition(|(k, _)| *k == key)?;
+        let (_, start) = stack.swap_remove(pos);
+
+        // Taken before the config is consulted, so that a reload landing on this return
+        // is not counted as time the function spent running.
+        let now = clock::raw();
+
+        // Read here as well as in the observer, which only sees a function the first
+        // time a request calls it: this is what makes a suspend part way through a long
+        // CLI run stop the probes that are already installed, since a suspended process
+        // holds a threshold nothing can beat.
+        let threshold = config::function_threshold_at(now);
+
+        let elapsed = clock::delta_nanos(start, now);
+        (elapsed > threshold).then_some(elapsed)
     })
 }
 

@@ -1,0 +1,10 @@
+# Live configuration for the Compass PHP extension.
+#
+# Running PHP processes pick changes up within five seconds. Nothing needs to be
+# restarted, and nothing here is read while no tracer is attached.
+
+# Only report function calls slower than this, in nanoseconds.
+function_threshold: 1000000
+
+# Stops all probing while it is true, leaving the extension loaded.
+suspend: false

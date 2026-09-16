@@ -23,7 +23,7 @@ These probes are triggered when PHP is running under the FPM SAPI.
 |-------|-----------|---------|
 | `fpm_request_init` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`uri` (string) - Request URI from `REQUEST_URI`, `PHP_SELF`, `SCRIPT_NAME`, or `"/unknown"`<br>`method` (string) - HTTP method from `REQUEST_METHOD` or `"UNKNOWN"` | Fired during request initialization. Records the identity and nature of the incoming HTTP request. |
 | `fpm_request_shutdown` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"` | Fired during request shutdown. Useful for rollup/finalization of traces for a given request. |
-| `fpm_function` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
+| `fpm_function` | `request_id` (string) - `HTTP_X_REQUEST_ID` header or `"UNKNOWN"`<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds the `function_threshold` setting. |
 
 ### CLI
 
@@ -33,7 +33,7 @@ These probes are triggered when PHP is running under the CLI SAPI. They are grou
 |-------|-----------|---------|
 | `cli_request_init` | `pid` (u64) - Process ID of the PHP CLI process<br>`command` (string) - Full CLI command from `argv` or `SCRIPT_NAME` | Fired during CLI request initialization. Records the PID and the full command being executed. |
 | `cli_request_shutdown` | `pid` (u64) - Process ID of the PHP CLI process | Fired during CLI request shutdown. Signals the end of a CLI process execution. |
-| `cli_function` | `pid` (u64) - Process ID of the PHP CLI process<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds `compass.function_threshold`. |
+| `cli_function` | `pid` (u64) - Process ID of the PHP CLI process<br>`function_name` (string) - Fully-qualified PHP function or method name<br>`elapsed` (u64) - Wall-clock time in nanoseconds<br>`memory` (u64) - PHP memory usage in bytes | Fired on PHP function completion. Only triggers if elapsed time exceeds the `function_threshold` setting. |
 
 ### Drupal
 
@@ -46,7 +46,41 @@ These probes are specific to Drupal applications (FPM only).
 
 ## INI Configuration
 
+These are read once, at startup, and changing them means restarting PHP.
+
 | Directive | Default | Description |
 |-----------|---------|-------------|
-| `compass.enabled` | `false` | Master switch to enable/disable the extension. |
-| `compass.function_threshold` | `1000000` (1ms) | Only function calls exceeding this elapsed time (in nanoseconds) trigger `fpm_function` / `cli_function` probes. |
+| `compass.enabled` | `false` | Master switch to enable/disable the extension. When off, the observer is never installed. |
+| `compass.config_file` | `/etc/compass/config.yml` | Where the live configuration below is read from. Set it to an empty value to turn the file off and run on the built-in defaults. |
+
+## Live Configuration
+
+Everything that is worth changing on a running fleet lives in a YAML file instead of an
+INI directive, so it can be changed without restarting PHP-FPM.
+
+```yaml
+# /etc/compass/config.yml
+function_threshold: 1000000
+suspend: false
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `function_threshold` | `1000000` (1ms) | Only function calls exceeding this elapsed time (in nanoseconds) trigger `fpm_function` / `cli_function` probes. |
+| `suspend` | `false` | Stops all probing while it is `true`, leaving the extension loaded and the file still watched. The kill switch for a fleet that is already traced. |
+
+The file is optional: every setting keeps its default when the file, or the setting, is
+missing. Settings the extension does not recognise are ignored, so a file written for a
+newer version still loads.
+
+Changes take effect within five seconds. The file is only opened and parsed when its
+mtime or size has changed, so the standing cost is a `stat` every five seconds per
+process — and nothing at all on a process no tracer is attached to, because the canary
+probe is checked first.
+
+A file that cannot be read or parsed leaves the previous settings in place and logs a
+warning, rather than reverting to the defaults: a writer that truncates and rewrites in
+place can be caught mid-write, and silently widening the threshold across a fleet is
+worse than running on the last known good file. Writing the file atomically — write a
+temporary file alongside it, then rename — avoids the window entirely, and is what a
+Kubernetes ConfigMap mount does already.

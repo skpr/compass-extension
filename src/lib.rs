@@ -1,13 +1,13 @@
 mod canary;
 mod cli;
 mod clock;
+mod config;
 mod drupal_cache;
 mod enabled;
 mod fpm;
 mod function_observer;
 mod observer;
 mod probe_str;
-mod threshold;
 mod util;
 
 use phper::{ini::Policy, modules::Module, php_get_module, sys};
@@ -22,7 +22,14 @@ pub fn get_module() -> Module {
     );
 
     module.add_ini(enabled::INI_CONFIG, false, Policy::All);
-    module.add_ini(threshold::INI_CONFIG, 1_000_000, Policy::All);
+
+    // The path only, not the settings behind it: those live in the file so they can be
+    // changed on a running fleet, and the file is optional.
+    module.add_ini(
+        config::INI_CONFIG,
+        config::DEFAULT_CONFIG_FILE.to_owned(),
+        Policy::All,
+    );
 
     module.on_module_init(on_module_init);
 
@@ -40,6 +47,10 @@ pub fn on_module_init() {
     // Ahead of the observer: calibrating the clock inside the first observed call would
     // stall a live request, and doing it here means FPM's workers inherit the result.
     clock::init();
+
+    // Same reason, and it needs the clock: the first read of the live config happens
+    // here rather than inside whichever request would otherwise have paid for it.
+    config::init();
 
     unsafe {
         sys::zend_observer_fcall_register(Some(observer::observer_instrument));
@@ -59,6 +70,12 @@ pub fn on_request_init() {
         return;
     }
 
+    // After the canary rather than before it: checking the live config costs a syscall
+    // once an interval, and there is nothing to suspend while no tracer is listening.
+    if config::is_suspended() {
+        return;
+    }
+
     fpm::init();
     cli::init();
 }
@@ -68,7 +85,7 @@ pub fn on_request_shutdown() {
         return;
     }
 
-    if canary::probe_enabled() {
+    if canary::probe_enabled() && !config::is_suspended() {
         fpm::shutdown();
         cli::shutdown();
     }
