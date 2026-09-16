@@ -2,7 +2,9 @@ use crate::canary::probe_enabled;
 use crate::cli::is_cli;
 use crate::fpm::is_fpm;
 use phper::{sys, values::ExecuteData};
-use std::ffi::CStr;
+
+// The Drupal class both cacheability probes hang off.
+const CACHEABLE_METADATA: &[u8] = b"Drupal\\Core\\Cache\\CacheableMetadata";
 
 #[inline(always)]
 fn handlers(
@@ -38,25 +40,34 @@ pub unsafe extern "C" fn observer_instrument(
         }
     };
 
-    let name = data.func().get_function_or_method_name();
+    let func = data.func();
 
-    // Convert ZStr -> &[u8] via CStr using the raw pointer.
-    let name_bytes: &[u8] = unsafe { CStr::from_ptr(name.as_c_str_ptr()) }.to_bytes();
+    // Matched as method name first and class name second, rather than through
+    // get_function_or_method_name: that builds "Class::method" into a freshly allocated
+    // zend_string, and this runs for every distinct function a request touches. The two
+    // comparisons are equivalent to the one they replace, because "::" cannot occur in
+    // either half, and they allocate nothing.
+    if let Some(method) = func.get_function_name() {
+        // Used to determine what max age headers we are getting from Drupal objects.
+        let end: Option<unsafe extern "C" fn(*mut sys::zend_execute_data, *mut sys::zval)> =
+            match method.to_bytes() {
+                b"createFromObject" => {
+                    Some(crate::drupal_cache::cacheablemetadata_createfromobject_observer_end)
+                }
+                b"createFromRenderArray" => {
+                    Some(crate::drupal_cache::cacheablemetadata_createfromrenderarray_observer_end)
+                }
+                _ => None,
+            };
 
-    // Used to determine what max age headers we are getting from Drupal objects.
-    if name_bytes == b"Drupal\\Core\\Cache\\CacheableMetadata::createFromObject" {
-        return handlers(
-            None, // No need to capture start time for this probe
-            Some(crate::drupal_cache::cacheablemetadata_createfromobject_observer_end),
-        );
-    }
-
-    // Used to determine what max age headers we are getting from Drupal objects.
-    if name_bytes == b"Drupal\\Core\\Cache\\CacheableMetadata::createFromRenderArray" {
-        return handlers(
-            None, // No need to capture start time for this probe
-            Some(crate::drupal_cache::cacheablemetadata_createfromrenderarray_observer_end),
-        );
+        if let Some(end) = end
+            && func
+                .get_class()
+                .is_some_and(|class| class.get_name().to_bytes() == CACHEABLE_METADATA)
+        {
+            // No need to capture start time for these probes.
+            return handlers(None, Some(end));
+        }
     }
 
     // Default function instrumentation

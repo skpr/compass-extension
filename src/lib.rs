@@ -1,5 +1,6 @@
 mod canary;
 mod cli;
+mod clock;
 mod drupal_cache;
 mod enabled;
 mod fpm;
@@ -35,6 +36,10 @@ pub fn on_module_init() {
     if !enabled::is_enabled() {
         return;
     }
+
+    // Ahead of the observer: calibrating the clock inside the first observed call would
+    // stall a live request, and doing it here means FPM's workers inherit the result.
+    clock::init();
 
     unsafe {
         sys::zend_observer_fcall_register(Some(observer::observer_instrument));
