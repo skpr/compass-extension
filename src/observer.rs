@@ -1,5 +1,6 @@
 use crate::canary::probe_enabled;
 use crate::cli::is_cli;
+use crate::config;
 use crate::fpm::is_fpm;
 use phper::{sys, values::ExecuteData};
 
@@ -17,7 +18,7 @@ fn handlers(
 pub unsafe extern "C" fn observer_instrument(
     execute_data: *mut sys::zend_execute_data,
 ) -> sys::zend_observer_fcall_handlers {
-    if !probe_enabled() {
+    if !probe_enabled() || config::is_suspended() {
         return handlers(None, None);
     }
 

@@ -51,15 +51,15 @@ if ! php -d extension="$EXTENSION" -m | grep -q '^compass_extension$'; then
 fi
 
 # Reading the INI entries back is the cheapest evidence that module init actually ran.
-THRESHOLD=$(php -d extension="$EXTENSION" -d compass.enabled=1 -d compass.function_threshold=1234567 -r 'echo ini_get("compass.function_threshold");')
-if [ "$THRESHOLD" != "1234567" ]; then
-  echo "error: compass.function_threshold read back as '$THRESHOLD', expected 1234567." >&2
-  exit 1
-fi
-
 ENABLED=$(php -d extension="$EXTENSION" -d compass.enabled=1 -r 'echo ini_get("compass.enabled");')
 if [ "$ENABLED" != "1" ]; then
   echo "error: compass.enabled read back as '$ENABLED', expected 1." >&2
+  exit 1
+fi
+
+CONFIG_FILE=$(php -d extension="$EXTENSION" -r 'echo ini_get("compass.config_file");')
+if [ "$CONFIG_FILE" != "/etc/compass/config.yml" ]; then
+  echo "error: compass.config_file defaulted to '$CONFIG_FILE', expected /etc/compass/config.yml." >&2
   exit 1
 fi
 
@@ -74,5 +74,29 @@ for FLAG in 1 0; do
   fi
 done
 
-echo "smoke: module loads, INI entries register, scripts run with compass.enabled=1 and 0."
+# Every shape of live config file a box might have, including the ones an operator gets
+# wrong. None of them may take PHP down with them: the release profile aborts on panic,
+# so a config file that made the extension panic would kill the request that read it.
+#
+# These only prove the module survives each file. Nothing here reads one, because no
+# tracer is attached and the canary keeps the config off an untraced process entirely.
+CONFIG_DIR=$(mktemp -d)
+trap 'rm -rf "$CONFIG_DIR"' EXIT
+
+printf 'function_threshold: 2500000\nsuspend: false\n' > "$CONFIG_DIR/both.yml"
+printf 'suspend: true\n' > "$CONFIG_DIR/suspended.yml"
+printf '# nothing set yet\n' > "$CONFIG_DIR/empty.yml"
+printf 'function_threshold: soon\n' > "$CONFIG_DIR/broken.yml"
+
+# Also the two paths with no file behind them at all: one that does not exist, and the
+# empty value that turns the file off and leaves the extension on its built-in defaults.
+for CONFIG in "$CONFIG_DIR/both.yml" "$CONFIG_DIR/suspended.yml" "$CONFIG_DIR/empty.yml" "$CONFIG_DIR/broken.yml" "$CONFIG_DIR/absent.yml" ""; do
+  OUTPUT=$(php -d extension="$EXTENSION" -d compass.enabled=1 -d compass.config_file="$CONFIG" -r 'function slow() { usleep(2000); return "ok"; } echo slow();')
+  if [ "$OUTPUT" != "ok" ]; then
+    echo "error: script with compass.config_file='$CONFIG' printed '$OUTPUT', expected ok." >&2
+    exit 1
+  fi
+done
+
+echo "smoke: module loads, INI entries register, scripts run with compass.enabled=1 and 0 and with every shape of live config file."
 """

@@ -54,4 +54,8 @@ FROM ghcr.io/skpr/php-fpm:8.3-v2-stable
   RUN PHP_MEMORY_LIMIT=-1 vendor/bin/drush si demo_umami --db-url=sqlite://sites/default/files/.ht.sqlite
 
   COPY 00_compass.ini /etc/php/conf.d/00_compass.ini
+
+  # Owned by skpr so the live config can be edited inside a running container, which
+  # is the point of it: the change lands without restarting PHP-FPM.
+  COPY --chown=skpr:skpr docker/compose/php-fpm/config.yml /etc/compass/config.yml
   COPY --from=build /data/target/release/libcompass_extension.so /usr/lib/php/modules/compass.so
