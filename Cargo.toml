@@ -10,7 +10,7 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 anyhow = "1.0.100"
 quanta = "0.12"
-phper = "0.17.2"
+phper = "0.18.0"
 probe = "0.5.2"
 once_cell = "1.21.3"
 tracing = "0.1.44"
@@ -23,3 +23,9 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# PHP 8.6 support, merged upstream but not yet released: https://github.com/phper-framework/phper/pull/266
+# Drop this and bump phper once that PR ships in a release.
+[patch.crates-io]
+phper = { git = "https://github.com/phper-framework/phper", rev = "96f8d9feb98f00be1f072e0636dedd915c77c921" }
+phper-sys = { git = "https://github.com/phper-framework/phper", rev = "96f8d9feb98f00be1f072e0636dedd915c77c921" }
