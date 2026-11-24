@@ -10,8 +10,13 @@ concurrency:
 
 jobs:
   quality:
-    name: Quality
+    name: Quality (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+
+    # phper generates its bindings from the PHP headers, so clippy has to see each version.
+    strategy:
+      matrix:
+        php: [ "8.4", "8.6" ]
 
     steps:
       - name: ⬇️ Git clone the repository
@@ -19,7 +24,7 @@ jobs:
 
       - name: 📦 Build devcontainer
         run: |
-          docker build -t localhost/devcontainer .devcontainer
+          docker build --build-arg PHP_VERSION=${{ matrix.php }} -t localhost/devcontainer .devcontainer
 
       - name: 📋 Clippy
         run: |
@@ -34,8 +39,12 @@ jobs:
           docker run --rm -v $(pwd):$(pwd) -w $(pwd) localhost/devcontainer mise probe-guard
 
   smoke:
-    name: Smoke Test
+    name: Smoke Test (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php: [ "8.4", "8.6" ]
 
     steps:
       - name: ⬇️ Git clone the repository
@@ -43,7 +52,7 @@ jobs:
 
       - name: 📦 Build devcontainer
         run: |
-          docker build -t localhost/devcontainer .devcontainer
+          docker build --build-arg PHP_VERSION=${{ matrix.php }} -t localhost/devcontainer .devcontainer
 
       - name: 🧪 Smoke Test
         run: |
